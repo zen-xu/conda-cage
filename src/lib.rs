@@ -1,1 +1,2 @@
 mod conda;
+mod error;
