@@ -13,8 +13,8 @@ pub struct CondaInfo {
 }
 
 impl CondaInfo {
-    pub fn new(conda_bin: &str) -> Result<Self> {
-        CondaConfig::new(conda_bin).map(|c| c.into())
+    pub fn try_new(conda_bin: &str) -> Result<Self> {
+        CondaConfig::try_new(conda_bin).map(|c| c.into())
     }
 }
 
@@ -45,7 +45,7 @@ struct CondaConfig {
 }
 
 impl CondaConfig {
-    fn new(conda_bin: &str) -> Result<Self> {
+    fn try_new(conda_bin: &str) -> Result<Self> {
         let ret = Command::new(conda_bin)
             .args(["config", "--show", "--json"])
             .output()?;
