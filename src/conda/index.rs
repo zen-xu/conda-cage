@@ -5,7 +5,7 @@ use std::{
 
 use serde::Deserialize;
 
-use super::CondaInfo;
+use super::{tarball_name, CondaInfo};
 use crate::{error::IoResultExt, Error, Result};
 
 #[derive(Deserialize)]
@@ -190,11 +190,6 @@ fn load_cached_index(
 ) -> Result<HashMap<String, PackageData>> {
     let data = std::fs::read(cached_index_path(cache_dir, channel, subdir))?;
     Ok(serde_json::from_slice::<IndexData>(&data)?.packages)
-}
-
-#[inline]
-fn tarball_name(name: &str, version: &str, build: &str) -> String {
-    format!("{name}-{version}-{build}.tar.bz2")
 }
 
 #[test]
