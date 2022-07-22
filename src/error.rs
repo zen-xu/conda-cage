@@ -13,6 +13,12 @@ pub enum Error {
         source: std::io::Error,
         path: PathBuf,
     },
+
+    #[error("{0}")]
+    ParseError(#[from] serde_json::Error),
+
+    #[error("{0}")]
+    CommandError(#[from] std::io::Error),
 }
 
 pub(crate) trait IoResultExt<T> {
