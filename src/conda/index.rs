@@ -72,18 +72,19 @@ impl CondaIndex {
         })
     }
 
-    /// get repo data
+    /// get repo data, first value is tarball name, second value is repo data
     pub fn get(
         &self,
         channel: &str,
         name: &str,
         version: &str,
         build: &str,
-    ) -> Option<&PackageData> {
+    ) -> Option<(String, &PackageData)> {
         for (_, subdir_indexes) in self.indexes.get(channel)?.iter() {
-            let repo_data = subdir_indexes.get(&tarball_name(name, version, build));
-            if repo_data.is_some() {
-                return repo_data;
+            let tarball_name = tarball_name(name, version, build);
+            let repo_data = subdir_indexes.get(&tarball_name);
+            if let Some(repo_data) = repo_data {
+                return Some((tarball_name, repo_data));
             }
         }
 
