@@ -6,10 +6,10 @@ use crate::Result;
 
 #[derive(Debug)]
 pub struct CondaInfo {
-    root_prefix: String,
-    channel_alias: String,
-    default_channels: Vec<String>,
-    subdirs: Vec<String>,
+    pub root_prefix: String,
+    pub channel_alias: String,
+    pub default_channels: Vec<String>,
+    pub subdirs: Vec<String>,
 }
 
 impl CondaInfo {
