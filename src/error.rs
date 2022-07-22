@@ -22,6 +22,9 @@ pub enum Error {
 
     #[error("{0}")]
     OtherError(String),
+
+    #[error("invalid recipe")]
+    InvalidRecipe,
 }
 
 pub(crate) trait IoResultExt<T> {
