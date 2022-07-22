@@ -33,14 +33,14 @@ pub struct PackageData {
 }
 
 #[derive(Debug)]
-pub struct RepoIndex {
+pub struct CondaIndex {
     info: CondaInfo,
     // channel -> subdir -> repo data
     indexes: HashMap<String, HashMap<String, HashMap<String, PackageData>>>,
     cache_dir: PathBuf,
 }
 
-impl RepoIndex {
+impl CondaIndex {
     pub fn try_new<P: Into<PathBuf>>(
         info: CondaInfo,
         cache_dir: P,
