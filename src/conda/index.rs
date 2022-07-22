@@ -79,16 +79,18 @@ impl CondaIndex {
     }
 
     /// get package data
-    pub fn get(&self, channel: &str, name: &str, version: &str, build: &str) -> Option<Package> {
-        for (_, subdir_indexes) in self.indexes.get(channel)?.iter() {
-            let tarball_name = tarball_name(name, version, build);
-            let repo_data = subdir_indexes.get(&tarball_name);
-            if let Some(repo_data) = repo_data {
-                return Some(Package {
-                    tarball_name,
-                    data: repo_data.clone(),
-                    channel: channel.to_string(),
-                });
+    pub fn get(&self, name: &str, version: &str, build: &str) -> Option<Package> {
+        for (channel, channel_indexes) in self.indexes.iter() {
+            for (_, subdir_indexes) in channel_indexes.iter() {
+                let tarball_name = tarball_name(name, version, build);
+                let repo_data = subdir_indexes.get(&tarball_name);
+                if let Some(repo_data) = repo_data {
+                    return Some(Package {
+                        tarball_name,
+                        data: repo_data.clone(),
+                        channel: channel.to_string(),
+                    });
+                }
             }
         }
 
