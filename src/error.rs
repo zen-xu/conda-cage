@@ -19,6 +19,9 @@ pub enum Error {
 
     #[error("{0}")]
     CommandError(#[from] std::io::Error),
+
+    #[error("{0}")]
+    OtherError(String),
 }
 
 pub(crate) trait IoResultExt<T> {
