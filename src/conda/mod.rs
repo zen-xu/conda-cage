@@ -1,6 +1,8 @@
+mod cache;
 mod index;
 mod info;
 
+pub use cache::CondaCache;
 pub use index::{CondaIndex, Package, PackageData};
 pub use info::CondaInfo;
 
