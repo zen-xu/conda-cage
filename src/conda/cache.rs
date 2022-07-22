@@ -10,7 +10,7 @@ pub struct CondaCache {
 impl CondaCache {
     pub fn new(conda_info: &CondaInfo) -> Self {
         Self {
-            packages_dir: PathBuf::from(conda_info.root_prefix).join("pkgs"),
+            packages_dir: PathBuf::from(conda_info.root_prefix.clone()).join("pkgs"),
         }
     }
 
