@@ -15,7 +15,7 @@ impl CondaCache {
     }
 
     pub fn get_extracted_dir(&self, pkg: &Package) -> Option<PathBuf> {
-        let pkg_dir = self.packages_dir.join(package_dir(
+        let pkg_dir = self.packages_dir.join(extracted_dir(
             &pkg.data.name,
             &pkg.data.version,
             &pkg.data.build,
@@ -53,6 +53,6 @@ impl CondaCache {
 }
 
 #[inline]
-fn package_dir(name: &str, version: &str, build: &str) -> String {
+fn extracted_dir(name: &str, version: &str, build: &str) -> String {
     format!("{name}-{version}-{build}")
 }
