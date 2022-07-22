@@ -39,16 +39,16 @@ pub struct Package {
 }
 
 #[derive(Debug)]
-pub struct CondaIndex {
-    info: CondaInfo,
+pub struct CondaIndex<'i> {
+    info: &'i CondaInfo,
     // channel -> subdir -> repo data
     indexes: HashMap<String, HashMap<String, HashMap<String, PackageData>>>,
     cache_dir: PathBuf,
 }
 
-impl CondaIndex {
+impl<'i> CondaIndex<'i> {
     pub fn try_new<P: Into<PathBuf>>(
-        info: CondaInfo,
+        info: &'i CondaInfo,
         cache_dir: P,
         channels: Vec<String>,
     ) -> Result<Self> {
@@ -195,4 +195,12 @@ fn load_cached_index(
 #[inline]
 fn tarball_name(name: &str, version: &str, build: &str) -> String {
     format!("{name}-{version}-{build}.tar.bz2")
+}
+
+#[test]
+fn test() {
+    let info = CondaInfo::try_new("conda").unwrap();
+    let index = CondaIndex::try_new(&info, "cache", vec!["main".to_string()]).unwrap();
+    let pkg = index.get("xz", "5.2.5", "h1de35cc_0").unwrap();
+    index.download(&pkg, "output").unwrap();
 }
