@@ -32,6 +32,12 @@ pub struct PackageData {
     pub build: String,
 }
 
+pub struct Package {
+    pub tarball_name: String,
+    pub data: PackageData,
+    pub channel: String,
+}
+
 #[derive(Debug)]
 pub struct CondaIndex {
     info: CondaInfo,
@@ -72,19 +78,17 @@ impl CondaIndex {
         })
     }
 
-    /// get repo data, first value is tarball name, second value is repo data
-    pub fn get(
-        &self,
-        channel: &str,
-        name: &str,
-        version: &str,
-        build: &str,
-    ) -> Option<(String, &PackageData)> {
+    /// get package data
+    pub fn get(&self, channel: &str, name: &str, version: &str, build: &str) -> Option<Package> {
         for (_, subdir_indexes) in self.indexes.get(channel)?.iter() {
             let tarball_name = tarball_name(name, version, build);
             let repo_data = subdir_indexes.get(&tarball_name);
             if let Some(repo_data) = repo_data {
-                return Some((tarball_name, repo_data));
+                return Some(Package {
+                    tarball_name,
+                    data: repo_data.clone(),
+                    channel: channel.to_string(),
+                });
             }
         }
 
@@ -92,13 +96,7 @@ impl CondaIndex {
     }
 
     // download pkg
-    pub fn download<S: AsRef<Path>>(
-        &self,
-        channel: &str,
-        name: &str,
-        subdir: &str,
-        dest: S,
-    ) -> Result<()> {
+    pub fn download<S: AsRef<Path>>(&self, pkg: &Package, dest: S) -> Result<()> {
         let dest = dest.as_ref();
         if !dest.exists() {
             std::fs::create_dir_all(dest)?;
@@ -107,9 +105,9 @@ impl CondaIndex {
         let url = url::Url::parse(&format!(
             "{}/{}/{}/{}",
             self.info.channel_alias.trim_end_matches('/'),
-            channel,
-            subdir,
-            name,
+            pkg.channel,
+            pkg.data.subdir,
+            pkg.tarball_name,
         ))
         .unwrap();
         let rsp = reqwest::blocking::get(url.clone()).map_err(|e| e.with_url(url.clone()))?;
@@ -122,7 +120,7 @@ impl CondaIndex {
             )));
         }
 
-        std::fs::write(dest.join(name), rsp.bytes()?)?;
+        std::fs::write(dest.join(&pkg.tarball_name), rsp.bytes()?)?;
 
         Ok(())
     }
