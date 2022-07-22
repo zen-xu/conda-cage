@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::Result;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CondaInfo {
     pub root_prefix: String,
     pub channel_alias: String,
