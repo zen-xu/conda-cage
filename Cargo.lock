@@ -43,6 +43,7 @@ name = "cargo-cage"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "openssl",
  "reqwest",
  "serde",

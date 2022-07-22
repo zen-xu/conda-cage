@@ -98,12 +98,7 @@ impl<'i> CondaIndex<'i> {
     }
 
     // download pkg
-    pub fn download<S: AsRef<Path>>(&self, pkg: &Package, dest: S) -> Result<()> {
-        let dest = dest.as_ref();
-        if !dest.exists() {
-            std::fs::create_dir_all(dest)?;
-        }
-
+    pub fn download<S: AsRef<Path>>(&self, pkg: &Package) -> Result<bytes::Bytes> {
         let url = url::Url::parse(&format!(
             "{}/{}/{}/{}",
             self.info.channel_alias.trim_end_matches('/'),
@@ -122,9 +117,7 @@ impl<'i> CondaIndex<'i> {
             )));
         }
 
-        std::fs::write(dest.join(&pkg.tarball_name), rsp.bytes()?)?;
-
-        Ok(())
+        Ok(rsp.bytes()?)
     }
 
     /// update indexes by the given channels
@@ -190,12 +183,4 @@ fn load_cached_index(
 ) -> Result<HashMap<String, PackageData>> {
     let data = std::fs::read(cached_index_path(cache_dir, channel, subdir))?;
     Ok(serde_json::from_slice::<IndexData>(&data)?.packages)
-}
-
-#[test]
-fn test() {
-    let info = CondaInfo::try_new("conda").unwrap();
-    let index = CondaIndex::try_new(&info, "cache", vec!["main".to_string()]).unwrap();
-    let pkg = index.get("xz", "5.2.5", "h1de35cc_0").unwrap();
-    index.download(&pkg, "output").unwrap();
 }
