@@ -91,6 +91,42 @@ impl CondaIndex {
         None
     }
 
+    // download pkg
+    pub fn download<S: AsRef<Path>>(
+        &self,
+        channel: &str,
+        name: &str,
+        subdir: &str,
+        dest: S,
+    ) -> Result<()> {
+        let dest = dest.as_ref();
+        if !dest.exists() {
+            std::fs::create_dir_all(dest)?;
+        }
+
+        let url = url::Url::parse(&format!(
+            "{}/{}/{}/{}",
+            self.info.channel_alias.trim_end_matches('/'),
+            channel,
+            subdir,
+            name,
+        ))
+        .unwrap();
+        let rsp = reqwest::blocking::get(url.clone()).map_err(|e| e.with_url(url.clone()))?;
+
+        if !rsp.status().is_success() {
+            return Err(Error::OtherError(format!(
+                "fail to fetch {}, code: {}",
+                url,
+                rsp.status()
+            )));
+        }
+
+        std::fs::write(dest.join(name), rsp.bytes()?)?;
+
+        Ok(())
+    }
+
     /// update indexes by the given channels
     pub fn update_indexes(&mut self, channels: Vec<&str>) -> Result<()> {
         update_cached_indexes(&self.cache_dir, &self.info, channels.clone())?;
