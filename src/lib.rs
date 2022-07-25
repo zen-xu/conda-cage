@@ -1,4 +1,4 @@
-mod conda;
+pub mod conda;
 mod error;
 
 pub use conda::{CondaIndex, CondaInfo, Package, PackageData};

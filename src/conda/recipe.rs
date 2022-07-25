@@ -82,11 +82,11 @@ impl CondaRecipe {
 }
 
 #[derive(Debug, Clone)]
-struct Spec {
-    name: String,
-    version: String,
-    build: String,
-    channel: Option<String>,
+pub struct Spec {
+    pub name: String,
+    pub version: String,
+    pub build: String,
+    pub channel: Option<String>,
 }
 
 impl PartialEq for Spec {
