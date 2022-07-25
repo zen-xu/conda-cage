@@ -10,7 +10,7 @@ struct Spec {
     name: String,
     version: String,
     build: String,
-    channel: String,
+    channel: Option<String>,
 }
 
 impl CondaRecipe {
@@ -31,13 +31,13 @@ impl CondaRecipe {
 
             let spec = match splitted.len() {
                 4 => Spec {
-                    channel: splitted.pop().unwrap(),
+                    channel: Some(splitted.pop().unwrap()),
                     build: splitted.pop().unwrap(),
                     version: splitted.pop().unwrap(),
                     name: splitted.pop().unwrap(),
                 },
                 3 => Spec {
-                    channel: "main".into(),
+                    channel: None,
                     build: splitted.pop().unwrap(),
                     version: splitted.pop().unwrap(),
                     name: splitted.pop().unwrap(),
