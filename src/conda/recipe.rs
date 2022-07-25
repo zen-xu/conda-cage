@@ -48,17 +48,19 @@ impl CondaRecipe {
     pub fn diff(&self, new_recipe: &CondaRecipe) -> DiffInfo {
         let mut diff = DiffInfo::default();
         for (k, old_spec) in &self.specs {
-            let (adds, deletes) = if old_spec.channel == Some("pypi".to_string()) {
-                (&mut diff.pypi.add, &mut diff.pypi.delete)
+            let (updates, deletes) = if old_spec.channel == Some("pypi".to_string()) {
+                (&mut diff.pypi.update, &mut diff.pypi.delete)
             } else {
-                (&mut diff.conda.add, &mut diff.conda.delete)
+                (&mut diff.conda.update, &mut diff.conda.delete)
             };
 
             match new_recipe.specs.get(k) {
                 Some(new_spec) => {
                     if new_spec != old_spec {
-                        adds.push(new_spec.clone());
-                        deletes.push(old_spec.clone());
+                        updates.push(Update {
+                            from: old_spec.clone(),
+                            to: new_spec.clone(),
+                        })
                     }
                 }
                 None => deletes.push(old_spec.clone()),
@@ -104,7 +106,14 @@ pub struct DiffInfo {
 #[derive(Debug, Default, PartialEq)]
 pub struct Diff {
     add: Vec<Spec>,
+    update: Vec<Update>,
     delete: Vec<Spec>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Update {
+    from: Spec,
+    to: Spec,
 }
 
 #[test]
@@ -128,6 +137,7 @@ d 0.1.1 ppp conda-forge
         DiffInfo {
             pypi: Diff {
                 add: vec![],
+                update: vec![],
                 delete: vec![Spec {
                     name: "c".into(),
                     version: "0.3.0".into(),
@@ -136,26 +146,27 @@ d 0.1.1 ppp conda-forge
                 }]
             },
             conda: Diff {
-                add: vec![
-                    Spec {
+                add: vec![Spec {
+                    name: "d".into(),
+                    version: "0.1.1".into(),
+                    build: "ppp".into(),
+                    channel: Some("conda-forge".into()),
+                }],
+                update: vec![Update {
+                    from: Spec {
+                        name: "a".into(),
+                        version: "0.1.0".into(),
+                        build: "abc".into(),
+                        channel: None,
+                    },
+                    to: Spec {
                         name: "a".into(),
                         version: "0.2.0".into(),
                         build: "abc".into(),
                         channel: None,
                     },
-                    Spec {
-                        name: "d".into(),
-                        version: "0.1.1".into(),
-                        build: "ppp".into(),
-                        channel: Some("conda-forge".into()),
-                    }
-                ],
-                delete: vec![Spec {
-                    name: "a".into(),
-                    version: "0.1.0".into(),
-                    build: "abc".into(),
-                    channel: None,
                 }],
+                delete: vec![],
             }
         }
     )
