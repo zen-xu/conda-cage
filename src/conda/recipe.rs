@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
 use crate::{Error, Result};
 
 #[derive(Debug)]
 pub struct CondaRecipe {
-    specs: Vec<Spec>,
+    specs: HashMap<String, Spec>,
 }
 
 #[derive(Debug)]
@@ -15,7 +17,7 @@ struct Spec {
 
 impl CondaRecipe {
     pub fn try_new(content: &str) -> Result<Self> {
-        let mut specs = vec![];
+        let mut specs = HashMap::new();
 
         for line in content.lines() {
             let line = line.trim();
@@ -45,7 +47,7 @@ impl CondaRecipe {
                 _ => return Err(Error::InvalidRecipe),
             };
 
-            specs.push(spec);
+            specs.insert(spec.name.clone(), spec);
         }
 
         Ok(Self { specs })
