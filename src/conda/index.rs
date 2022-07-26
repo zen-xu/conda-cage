@@ -15,7 +15,7 @@ struct IndexData {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct PackageData {
-    pub size: u64,
+    pub size: usize,
     pub timestamp: Option<u64>,
     pub source_url: Option<String>,
     pub depends: Vec<String>,
