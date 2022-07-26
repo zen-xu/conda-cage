@@ -7,7 +7,7 @@ use std::{
 use buffered_reader::Memory;
 use serde::Deserialize;
 
-use super::{tarball_name, CondaInfo};
+use super::{tarball_name, CondaCache, CondaInfo};
 use crate::{error::IoResultExt, Error, Result};
 
 #[derive(Deserialize)]
@@ -50,14 +50,10 @@ pub struct CondaIndex<'i> {
 }
 
 impl<'i> CondaIndex<'i> {
-    pub fn try_new<P: Into<PathBuf>>(
-        info: &'i CondaInfo,
-        cache_dir: P,
-        download_dir: P,
-        channels: Vec<String>,
-    ) -> Result<Self> {
-        let cache_dir: PathBuf = cache_dir.into();
-        let download_dir: PathBuf = download_dir.into();
+    pub fn try_new(info: &'i CondaInfo, cache: &CondaCache, channels: Vec<String>) -> Result<Self> {
+        let download_dir = cache.packages_dir.clone();
+        let cache_dir = download_dir.join("cache");
+
         let mut indexes: HashMap<String, HashMap<String, HashMap<String, PackageData>>> =
             HashMap::new();
 
