@@ -15,12 +15,12 @@ struct IndexData {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct PackageData {
-    pub size: usize,
+    pub size: Option<usize>,
     pub timestamp: Option<u64>,
     pub source_url: Option<String>,
     pub depends: Vec<String>,
     pub arch: Option<String>,
-    pub md5: String,
+    pub md5: Option<String>,
     pub build_number: u64,
     pub name: String,
     pub license: Option<String>,
@@ -28,7 +28,7 @@ pub struct PackageData {
     pub platform: Option<String>,
     pub version: String,
     pub subdir: String,
-    pub sha256: String,
+    pub sha256: Option<String>,
     pub build: String,
 }
 
@@ -36,6 +36,8 @@ pub struct Package {
     pub tarball_name: String,
     pub data: PackageData,
     pub channel: String,
+    pub subdir: String,
+    pub channel_url: String,
 }
 
 #[derive(Debug)]
@@ -84,14 +86,20 @@ impl<'i, 'c> CondaIndex<'i, 'c> {
     /// get package data
     pub fn get(&self, name: &str, version: &str, build: &str) -> Option<Package> {
         for (channel, channel_indexes) in self.indexes.iter() {
-            for (_, subdir_indexes) in channel_indexes.iter() {
+            for (subdir, subdir_indexes) in channel_indexes.iter() {
                 let tarball_name = tarball_name(name, version, build);
                 let repo_data = subdir_indexes.get(&tarball_name);
                 if let Some(repo_data) = repo_data {
                     return Some(Package {
                         tarball_name,
                         data: repo_data.clone(),
-                        channel: channel.to_string(),
+                        channel: channel.clone(),
+                        channel_url: format!(
+                            "{}/{}",
+                            self.info.channel_alias.trim_end_matches('/'),
+                            channel
+                        ),
+                        subdir: subdir.clone(),
                     });
                 }
             }
