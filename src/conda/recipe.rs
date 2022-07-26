@@ -106,8 +106,8 @@ impl PartialEq for Spec {
 
 #[derive(Debug, Default, PartialEq)]
 pub struct DiffInfo {
-    conda: Diff,
-    pypi: Diff,
+    pub conda: Diff,
+    pub pypi: Diff,
 }
 
 impl Display for DiffInfo {
@@ -167,9 +167,9 @@ impl Display for DiffInfo {
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Diff {
-    add: Vec<Spec>,
-    update: Vec<Update>,
-    delete: Vec<Spec>,
+    pub add: Vec<Spec>,
+    pub update: Vec<Update>,
+    pub delete: Vec<Spec>,
 }
 
 #[derive(Debug, PartialEq)]
