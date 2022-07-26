@@ -5,7 +5,7 @@ use std::{
 
 use serde::Deserialize;
 
-use super::{tarball_name, CondaCache, CondaInfo};
+use super::{recipe::Spec, tarball_name, CondaCache, CondaInfo};
 use crate::{error::IoResultExt, Error, Result};
 
 #[derive(Deserialize)]
@@ -106,6 +106,11 @@ impl<'i, 'c> CondaIndex<'i, 'c> {
         }
 
         None
+    }
+
+    /// get package by spec
+    pub fn get_by_spec(&self, spec: &Spec) -> Option<Package> {
+        self.get(&spec.name, &spec.version, &spec.build)
     }
 
     // download pkg tarball and unpack it
