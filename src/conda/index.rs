@@ -1,10 +1,8 @@
 use std::{
     collections::HashMap,
-    io::Read,
     path::{Path, PathBuf},
 };
 
-use buffered_reader::Memory;
 use serde::Deserialize;
 
 use super::{tarball_name, CondaCache, CondaInfo};
@@ -41,18 +39,21 @@ pub struct Package {
 }
 
 #[derive(Debug)]
-pub struct CondaIndex<'i> {
+pub struct CondaIndex<'i, 'c> {
     info: &'i CondaInfo,
+    cache: &'c CondaCache,
     // channel -> subdir -> repo data
     indexes: HashMap<String, HashMap<String, HashMap<String, PackageData>>>,
     cache_dir: PathBuf,
-    download_dir: PathBuf,
 }
 
-impl<'i> CondaIndex<'i> {
-    pub fn try_new(info: &'i CondaInfo, cache: &CondaCache, channels: Vec<String>) -> Result<Self> {
-        let download_dir = cache.packages_dir.clone();
-        let cache_dir = download_dir.join("cache");
+impl<'i, 'c> CondaIndex<'i, 'c> {
+    pub fn try_new(
+        info: &'i CondaInfo,
+        cache: &'c CondaCache,
+        channels: Vec<String>,
+    ) -> Result<Self> {
+        let cache_dir = cache.packages_dir.join("cache");
 
         let mut indexes: HashMap<String, HashMap<String, HashMap<String, PackageData>>> =
             HashMap::new();
@@ -76,7 +77,7 @@ impl<'i> CondaIndex<'i> {
             info,
             indexes,
             cache_dir,
-            download_dir,
+            cache,
         })
     }
 
@@ -119,30 +120,8 @@ impl<'i> CondaIndex<'i> {
             )));
         }
 
-        let contents = rsp.bytes()?;
-
-        // dump tarball
-        if !self.download_dir.exists() {
-            std::fs::create_dir_all(&self.download_dir)?;
-        }
-        let tarball_path = self.download_dir.join(&pkg.tarball_name);
-        std::fs::write(tarball_path, &contents)?;
-
-        // unpack tarball
-        let unpack_dir = self
-            .download_dir
-            .join(&pkg.tarball_name.trim_end_matches(".tar.bz2"));
-        if unpack_dir.exists() {
-            std::fs::remove_dir_all(&unpack_dir)?;
-        }
-        std::fs::create_dir_all(&unpack_dir)?;
-
-        let buf = Memory::new(&contents);
-        let mut decorder = bzip2::read::BzDecoder::new(buf);
-        let mut data = vec![];
-        decorder.read_to_end(&mut data)?;
-        let buf = Memory::new(&data);
-        tar::Archive::new(buf).unpack(&unpack_dir)?;
+        self.cache.add_tarball(pkg, &rsp.bytes()?)?;
+        self.cache.unpack_tarball(pkg)?;
 
         Ok(())
     }
@@ -211,3 +190,12 @@ fn load_cached_index(
     let data = std::fs::read(cached_index_path(cache_dir, channel, subdir))?;
     Ok(serde_json::from_slice::<IndexData>(&data)?.packages)
 }
+
+/* #[test]
+fn test_download() {
+    let info = CondaInfo::try_new("conda").unwrap();
+    let cache = CondaCache::new(&info);
+    let index = CondaIndex::try_new(&info, &cache, vec!["pkgs/main".to_string()]).unwrap();
+    let pkg = index.get("xz", "5.2.5", "h1de35cc_0").unwrap();
+    index.download(&pkg).unwrap();
+} */
