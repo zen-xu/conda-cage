@@ -1,8 +1,10 @@
 use std::{
     collections::HashMap,
+    io::Read,
     path::{Path, PathBuf},
 };
 
+use buffered_reader::Memory;
 use serde::Deserialize;
 
 use super::{tarball_name, CondaInfo};
@@ -44,15 +46,18 @@ pub struct CondaIndex<'i> {
     // channel -> subdir -> repo data
     indexes: HashMap<String, HashMap<String, HashMap<String, PackageData>>>,
     cache_dir: PathBuf,
+    download_dir: PathBuf,
 }
 
 impl<'i> CondaIndex<'i> {
     pub fn try_new<P: Into<PathBuf>>(
         info: &'i CondaInfo,
         cache_dir: P,
+        download_dir: P,
         channels: Vec<String>,
     ) -> Result<Self> {
         let cache_dir: PathBuf = cache_dir.into();
+        let download_dir: PathBuf = download_dir.into();
         let mut indexes: HashMap<String, HashMap<String, HashMap<String, PackageData>>> =
             HashMap::new();
 
@@ -75,6 +80,7 @@ impl<'i> CondaIndex<'i> {
             info,
             indexes,
             cache_dir,
+            download_dir,
         })
     }
 
@@ -97,8 +103,8 @@ impl<'i> CondaIndex<'i> {
         None
     }
 
-    // download pkg
-    pub fn download<S: AsRef<Path>>(&self, pkg: &Package) -> Result<bytes::Bytes> {
+    // download pkg tarball and unpack it
+    pub fn download(&self, pkg: &Package) -> Result<()> {
         let url = url::Url::parse(&format!(
             "{}/{}/{}/{}",
             self.info.channel_alias.trim_end_matches('/'),
@@ -117,7 +123,32 @@ impl<'i> CondaIndex<'i> {
             )));
         }
 
-        Ok(rsp.bytes()?)
+        let contents = rsp.bytes()?;
+
+        // dump tarball
+        if !self.download_dir.exists() {
+            std::fs::create_dir_all(&self.download_dir)?;
+        }
+        let tarball_path = self.download_dir.join(&pkg.tarball_name);
+        std::fs::write(tarball_path, &contents)?;
+
+        // unpack tarball
+        let unpack_dir = self
+            .download_dir
+            .join(&pkg.tarball_name.trim_end_matches(".tar.bz2"));
+        if unpack_dir.exists() {
+            std::fs::remove_dir_all(&unpack_dir)?;
+        }
+        std::fs::create_dir_all(&unpack_dir)?;
+
+        let buf = Memory::new(&contents);
+        let mut decorder = bzip2::read::BzDecoder::new(buf);
+        let mut data = vec![];
+        decorder.read_to_end(&mut data)?;
+        let buf = Memory::new(&data);
+        tar::Archive::new(buf).unpack(&unpack_dir)?;
+
+        Ok(())
     }
 
     /// update indexes by the given channels

@@ -18,6 +18,9 @@ indicatif = "0.16.2"
 console = { version = "0.15", default-features = false, features = [
     "ansi-parsing",
 ] }
+tar = "0.4"
+bzip2 = "0.4"
+buffered-reader = "1"
 
 [dev-dependencies]
 assert-json-diff = "2"
