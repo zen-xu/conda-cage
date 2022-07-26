@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use console::style;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::{Error, Result};
 
@@ -91,6 +92,12 @@ pub struct Spec {
     pub channel: Option<String>,
 }
 
+impl Display for Spec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}:{}", self.name, self.version, self.build)
+    }
+}
+
 impl PartialEq for Spec {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.version == other.version && self.build == other.build
@@ -101,6 +108,61 @@ impl PartialEq for Spec {
 pub struct DiffInfo {
     conda: Diff,
     pypi: Diff,
+}
+
+impl Display for DiffInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", style("Conda:").dim().bold())?;
+        if !self.conda.add.is_empty() {
+            writeln!(f, "  {}", style("Add:").green())?;
+            for pkg in &self.conda.add {
+                writeln!(f, "    {}", style(pkg.to_string()).yellow())?;
+            }
+        }
+        if !self.conda.update.is_empty() {
+            writeln!(f, "  {}", style("Update:").blue())?;
+            for update in &self.conda.update {
+                writeln!(
+                    f,
+                    "    {} => {}",
+                    style(update.from.to_string()).yellow(),
+                    style(update.to.to_string()).yellow()
+                )?;
+            }
+        }
+        if !self.conda.delete.is_empty() {
+            writeln!(f, "  {}", style("Delete:").red())?;
+            for pkg in &self.conda.delete {
+                writeln!(f, "    {}", style(pkg.to_string()).yellow())?;
+            }
+        }
+
+        writeln!(f, "{}", style("PyPi:").dim().bold())?;
+        if !self.pypi.add.is_empty() {
+            writeln!(f, "  {}", style("Add:").green())?;
+            for pkg in &self.pypi.add {
+                writeln!(f, "    {}", style(pkg.to_string()).yellow())?;
+            }
+        }
+        if !self.pypi.update.is_empty() {
+            writeln!(f, "  {}", style("Update:").blue())?;
+            for update in &self.pypi.update {
+                writeln!(
+                    f,
+                    "    {} => {}",
+                    style(update.from.to_string()).yellow(),
+                    style(update.to.to_string()).yellow()
+                )?;
+            }
+        }
+        if !self.pypi.delete.is_empty() {
+            writeln!(f, "  {}", style("Delete:").red())?;
+            for pkg in &self.pypi.delete {
+                writeln!(f, "    {}", style(pkg.to_string()).yellow())?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -131,6 +193,7 @@ d 0.1.1 ppp conda-forge
     let old = CondaRecipe::try_new(old_recipe).unwrap();
     let new = CondaRecipe::try_new(new_recipe).unwrap();
     let diff = old.diff(&new);
+    println!("{}", diff);
 
     assert_eq!(
         diff,
