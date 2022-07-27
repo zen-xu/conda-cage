@@ -265,14 +265,14 @@ struct PathsData {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PathData {
     #[serde(rename = "_path")]
-    path: String,
+    pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     prefix_placeholder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     file_mode: Option<FileMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     no_link: Option<bool>,
-    path_type: PathType,
+    pub path_type: PathType,
     #[serde(skip_serializing_if = "Option::is_none")]
     sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
