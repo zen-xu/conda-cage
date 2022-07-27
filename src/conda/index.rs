@@ -27,7 +27,7 @@ pub struct PackageData {
     pub license_family: Option<String>,
     pub platform: Option<String>,
     pub version: String,
-    pub subdir: String,
+    pub subdir: Option<String>,
     pub sha256: Option<String>,
     pub build: String,
 }
@@ -123,7 +123,7 @@ impl<'i, 'c> CondaIndex<'i, 'c> {
             "{}/{}/{}/{}",
             self.info.channel_alias.trim_end_matches('/'),
             pkg.channel,
-            pkg.data.subdir,
+            pkg.subdir,
             pkg.tarball_name,
         ))
         .unwrap();
