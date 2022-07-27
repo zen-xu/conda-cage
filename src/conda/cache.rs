@@ -267,7 +267,7 @@ pub struct PathData {
     #[serde(rename = "_path")]
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    prefix_placeholder: Option<String>,
+    pub prefix_placeholder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     file_mode: Option<FileMode>,
     #[serde(skip_serializing_if = "Option::is_none")]

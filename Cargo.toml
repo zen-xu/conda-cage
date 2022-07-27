@@ -10,7 +10,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 reqwest = { version = "0.11", features = ["blocking"] }
 tokio = { version = "1", features = ["full"] }
 thiserror = "1"
-anyhow = "1"
+anyhow = { version = "1", features = ["backtrace"] }
 url = "2"
 bytes = "1"
 clap = { version = "3", features = ["derive"] }
