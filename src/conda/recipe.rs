@@ -174,8 +174,8 @@ pub struct Diff {
 
 #[derive(Debug, PartialEq)]
 pub struct Update {
-    from: Spec,
-    to: Spec,
+    pub from: Spec,
+    pub to: Spec,
 }
 
 #[test]
