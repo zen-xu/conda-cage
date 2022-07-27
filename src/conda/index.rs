@@ -50,21 +50,25 @@ pub struct CondaIndex<'i, 'c> {
 }
 
 impl<'i, 'c> CondaIndex<'i, 'c> {
-    pub fn try_new(
+    pub fn try_new<'s, I, S>(
         info: &'i CondaInfo,
         cache: &'c CondaCache,
-        channels: Vec<String>,
-    ) -> Result<Self> {
+        channels: I,
+    ) -> Result<Self>
+    where
+        I: IntoIterator<Item = &'s S>,
+        S: AsRef<str> + 's,
+    {
         let cache_dir = cache.packages_dir.join("cache");
 
         let mut indexes: HashMap<String, HashMap<String, HashMap<String, PackageData>>> =
             HashMap::new();
 
-        for channel in channels.iter() {
+        for channel in channels.into_iter().map(AsRef::as_ref) {
             for subdir in info.subdirs.iter() {
                 let cached_path = cached_index_path(&cache_dir, channel, subdir);
                 if !cached_path.exists() {
-                    update_cached_indexes(&cache_dir, &info, vec![channel])?;
+                    update_cached_indexes(&cache_dir, &info, &[channel])?;
                 }
 
                 let sub_indexes = load_cached_index(&cache_dir, channel, subdir)?;
@@ -140,8 +144,16 @@ impl<'i, 'c> CondaIndex<'i, 'c> {
     }
 
     /// update indexes by the given channels
-    pub fn update_indexes(&mut self, channels: Vec<&str>) -> Result<()> {
-        update_cached_indexes(&self.cache_dir, &self.info, channels.clone())?;
+    pub fn update_indexes<'s, I, S>(&mut self, channels: I) -> Result<()>
+    where
+        I: IntoIterator<Item = &'s S>,
+        S: AsRef<str> + 's,
+    {
+        let channels = channels
+            .into_iter()
+            .map(AsRef::as_ref)
+            .collect::<Vec<&str>>();
+        update_cached_indexes(&self.cache_dir, &self.info, &channels)?;
 
         for channel in channels.into_iter() {
             for subdir in self.info.subdirs.iter() {
@@ -157,16 +169,20 @@ impl<'i, 'c> CondaIndex<'i, 'c> {
     }
 }
 
-fn update_cached_indexes(
+fn update_cached_indexes<'s, I, S>(
     cache_dir: &Path,
     conda_info: &CondaInfo,
-    channels: Vec<&str>,
-) -> Result<()> {
+    channels: I,
+) -> Result<()>
+where
+    I: IntoIterator<Item = &'s S>,
+    S: AsRef<str> + 's,
+{
     if !cache_dir.exists() {
         std::fs::create_dir_all(cache_dir)?;
     }
 
-    for channel in channels {
+    for channel in channels.into_iter().map(AsRef::as_ref) {
         for subdir in conda_info.subdirs.iter() {
             let url = url::Url::parse(&format!(
                 "{}/{}/{}/repodata.json",

@@ -330,7 +330,7 @@ fn test_get_prefix_record() {
 
     let info = CondaInfo::try_new("conda").unwrap();
     let cache = CondaCache::new(&info);
-    let index = CondaIndex::try_new(&info, &cache, vec!["pkgs/main".to_string()]).unwrap();
+    let index = CondaIndex::try_new(&info, &cache, &["pkgs/main".to_string()]).unwrap();
     let pkg = index.get("xz", "5.2.5", "h1de35cc_0").unwrap();
     index.download(&pkg).unwrap();
     let prefix_record = cache.try_get_prefix_record(&pkg).unwrap();
