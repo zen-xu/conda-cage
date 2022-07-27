@@ -269,7 +269,7 @@ pub struct PathData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_placeholder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    file_mode: Option<FileMode>,
+    pub file_mode: Option<FileMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     no_link: Option<bool>,
     pub path_type: PathType,
@@ -285,7 +285,7 @@ pub struct PathData {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-enum FileMode {
+pub enum FileMode {
     Text,
     Binary,
 }

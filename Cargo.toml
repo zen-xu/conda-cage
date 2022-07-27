@@ -21,6 +21,7 @@ console = { version = "0.15", default-features = false, features = [
 tar = "0.4"
 bzip2 = "0.4"
 buffered-reader = "1"
+regex = "1"
 
 [dev-dependencies]
 assert-json-diff = "2"

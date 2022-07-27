@@ -329,7 +329,8 @@ fn install_conda_pkg(
     let prefix_record = conda_cache.try_get_prefix_record(&pkg)?;
     let cwd = std::env::current_dir()?;
 
-    let python_bin = env_root_dir.join("bin/python").display().to_string();
+    let env_root_prefix = env_root_dir.display().to_string();
+
     for file in prefix_record.paths() {
         let from = &extracted_dir.join(&file.path);
         let to = &env_root_dir.join(&file.path);
@@ -343,11 +344,16 @@ fn install_conda_pkg(
                 if to.exists() {
                     std::fs::remove_file(to)?;
                 }
-                std::fs::hard_link(from, to)?;
+
                 if let Some(prefix) = &file.prefix_placeholder {
-                    let contents = std::fs::read_to_string(to)?;
-                    let contents = contents.replace(prefix, &format!("#!{}", python_bin));
-                    std::fs::write(to, contents)?;
+                    let contents = std::fs::read(from)?;
+                    let pattern = regex::bytes::Regex::new(prefix).unwrap();
+                    let data = pattern.replace_all(&contents, env_root_prefix.as_bytes());
+                    std::fs::write(to, data)?;
+                    let meta = std::fs::metadata(from)?;
+                    std::fs::set_permissions(to, meta.permissions())?;
+                } else {
+                    std::fs::hard_link(from, to)?;
                 }
             }
             PathType::SoftLink => {
