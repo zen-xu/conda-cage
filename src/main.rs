@@ -162,13 +162,20 @@ fn install(
 
     // Step 3: install new pkgs
     let total = (diff.conda.add.len() + diff.pypi.add.len()) as u64;
-    let pb = ProgressBar::new(total)
-        .with_style(
-            ProgressStyle::default_bar()
-                .template("{prefix:.bold.dim} {msg}\n{wide_bar} {pos}/{len}"),
-        )
-        .with_prefix("[3/5]")
-        .with_message("installing new pkgs..");
+    let pb = if total > 0 {
+        ProgressBar::new(total)
+            .with_style(
+                ProgressStyle::default_bar()
+                    .template("{prefix:.bold.dim} {msg}\n{wide_bar} {pos}/{len}"),
+            )
+            .with_prefix("[3/5]")
+            .with_message("installing new pkgs..")
+    } else {
+        ProgressBar::new(total)
+            .with_style(default_style.clone())
+            .with_prefix("[3/5]")
+            .with_message("installing new pkgs..")
+    };
     // install conda pkgs first
     for spec in diff.conda.add {
         pb.println(format!(
@@ -188,20 +195,26 @@ fn install(
     for spec in diff.pypi.add {
         pb.println(format!("installing {}:{}...", spec.name, spec.version));
         install_pypi_pkg(&env_root_dir, &spec)?;
-        pb.println(format!("installed {}:{}...", spec.name, spec.version));
         pb.inc(1);
     }
     pb.finish_with_message(format!("added {} new pkgs", total));
 
     // Step 4: update pkgs
     let total = (diff.conda.update.len() + diff.pypi.update.len()) as u64;
-    let pb = ProgressBar::new(total)
-        .with_style(
-            ProgressStyle::default_bar()
-                .template("{prefix:.bold.dim} {msg}\n{wide_bar} {pos}/{len}"),
-        )
-        .with_prefix("[4/5]")
-        .with_message("updating pkgs..");
+    let pb = if total > 0 {
+        ProgressBar::new(total)
+            .with_style(
+                ProgressStyle::default_bar()
+                    .template("{prefix:.bold.dim} {msg}\n{wide_bar} {pos}/{len}"),
+            )
+            .with_prefix("[4/5]")
+            .with_message("updating pkgs..")
+    } else {
+        ProgressBar::new(total)
+            .with_style(default_style.clone())
+            .with_prefix("[4/5]")
+            .with_message("updating pkgs..")
+    };
     for update in diff.conda.update {
         pb.println(format!(
             "updating {}:{}:{} => {}:{}:{}...",
@@ -235,13 +248,20 @@ fn install(
 
     // Step 5: delete pkgs
     let total = (diff.conda.delete.len() + diff.pypi.delete.len()) as u64;
-    let pb = ProgressBar::new(total)
-        .with_style(
-            ProgressStyle::default_bar()
-                .template("{prefix:.bold.dim} {msg}\n{wide_bar} {pos}/{len}"),
-        )
-        .with_prefix("[5/5]")
-        .with_message("deleting pkgs..");
+    let pb = if total > 0 {
+        ProgressBar::new(total)
+            .with_style(
+                ProgressStyle::default_bar()
+                    .template("{prefix:.bold.dim} {msg}\n{wide_bar} {pos}/{len}"),
+            )
+            .with_prefix("[5/5]")
+            .with_message("deleting pkgs..")
+    } else {
+        ProgressBar::new(total)
+            .with_style(default_style.clone())
+            .with_prefix("[5/5]")
+            .with_message("deleting new pkgs..")
+    };
     for spec in &diff.conda.delete {
         pb.set_message(format!(
             "deleting {}:{}:{}...",
@@ -425,7 +445,7 @@ fn uninstall_conda_pkg(
 fn install_pypi_pkg(env_root_dir: &PathBuf, spec: &Spec) -> anyhow::Result<()> {
     //panic!("{}", env_root_dir.join("bin").join("pip").display());
     let pip_path = env_root_dir.join("bin").join("pip").display().to_string();
-    let process = Command::new(&pip_path)
+    let mut process = Command::new(&pip_path)
         .args([
             "install",
             "--no-deps",
@@ -434,11 +454,16 @@ fn install_pypi_pkg(env_root_dir: &PathBuf, spec: &Spec) -> anyhow::Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()?;
-    let mut s = String::new();
-    match process.stderr.unwrap().read_to_string(&mut s) {
-        Err(e) => Err(e)?,
-        Ok(_) => Err(anyhow!(s))?,
+    let status = process.wait()?;
+    if !status.success() {
+        let mut s = String::new();
+        match process.stderr.unwrap().read_to_string(&mut s) {
+            Err(e) => Err(e)?,
+            Ok(_) => Err(anyhow!(s))?,
+        }
     }
+
+    Ok(())
 }
 
 fn uninstall_pypi_pkg(env_root_dir: &PathBuf, spec: &Spec) -> anyhow::Result<()> {
@@ -464,7 +489,7 @@ fn run() -> anyhow::Result<()> {
     let mut s = String::new();
     match process.stderr.unwrap().read_to_string(&mut s) {
         Err(why) => Err(why)?,
-        Ok(_) => println!("ffff {}", s),
+        Ok(_) => println!("{}", s),
     }
     Ok(())
 }
