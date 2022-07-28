@@ -10,7 +10,8 @@ use std::{
 };
 
 use anyhow::anyhow;
-use cargo_cage::{
+use clap::{Parser, Subcommand, ValueHint};
+use conda_cage::{
     conda::{
         cache::{FileMode, PathType},
         recipe::Spec,
@@ -18,7 +19,6 @@ use cargo_cage::{
     },
     CondaIndex, CondaInfo,
 };
-use clap::{Parser, Subcommand, ValueHint};
 use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Parser, Debug)]
