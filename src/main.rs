@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::HashSet,
     ffi::OsStr,
     fs::read_link,
@@ -10,7 +11,11 @@ use std::{
 
 use anyhow::anyhow;
 use cargo_cage::{
-    conda::{cache::PathType, recipe::Spec, CondaCache, CondaRecipe},
+    conda::{
+        cache::{FileMode, PathType},
+        recipe::Spec,
+        CondaCache, CondaRecipe,
+    },
     CondaIndex, CondaInfo,
 };
 use clap::{Parser, Subcommand, ValueHint};
@@ -347,8 +352,17 @@ fn install_conda_pkg(
 
                 if let Some(prefix) = &file.prefix_placeholder {
                     let contents = std::fs::read(from)?;
-                    let pattern = regex::bytes::Regex::new(prefix).unwrap();
-                    let data = pattern.replace_all(&contents, env_root_prefix.as_bytes());
+                    let data = match file.file_mode {
+                        Some(FileMode::Text) | None => {
+                            let pattern =
+                                regex::bytes::Regex::new(&regex::escape(&prefix)).unwrap();
+                            pattern.replace_all(&contents, env_root_prefix.as_bytes())
+                        }
+                        Some(FileMode::Binary) => {
+                            binary_replace(&contents, &prefix, &env_root_prefix)
+                        }
+                    };
+
                     std::fs::write(to, data)?;
                     let meta = std::fs::metadata(from)?;
                     std::fs::set_permissions(to, meta.permissions())?;
@@ -455,7 +469,22 @@ fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[test]
-fn get_symlink() {
-    symlink("123", "123.bk");
+fn binary_replace<'t>(data: &'t [u8], from: &str, to: &str) -> Cow<'t, [u8]> {
+    let from = regex::escape(from);
+    let pattern = regex::bytes::Regex::new(&format!("{}([^\0]*?)\0", &from)).unwrap();
+    let data = pattern.replace_all(&data, |cap: &regex::bytes::Captures| {
+        let captured_data = cap[0].to_owned();
+        let original_bytes_count = captured_data.len();
+        let mut replaced_bytes = regex::bytes::Regex::new(&from)
+            .unwrap()
+            .replace(&captured_data, &to.as_bytes()[..])
+            .to_vec();
+        let replaced_bytes_count = replaced_bytes.len();
+        if replaced_bytes_count > original_bytes_count {
+            panic!("Padding Error")
+        }
+        replaced_bytes.extend(vec![b'\0'; original_bytes_count - replaced_bytes_count]);
+        replaced_bytes
+    });
+    data
 }
