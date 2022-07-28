@@ -176,18 +176,37 @@ fn install(
             .with_prefix("[3/5]")
             .with_message("installing new pkgs..")
     };
+
     // install conda pkgs first
-    for spec in diff.conda.add {
+    let mut python_version = None;
+    let mut conda_adds = diff.conda.add.clone();
+    conda_adds.sort_by(|a, b| match (a.name.as_str(), b.name.as_str()) {
+        ("python", _) => std::cmp::Ordering::Less,
+        (_, "python") => std::cmp::Ordering::Greater,
+        (_, _) => a.name.cmp(&b.name),
+    });
+    for spec in conda_adds {
         pb.println(format!(
             "installing {}:{}:{}...",
             spec.name, spec.version, spec.build
         ));
+        if spec.name == "python" {
+            let version = spec
+                .version
+                .split('.')
+                .take(2)
+                .collect::<Vec<&str>>()
+                .join(".")
+                .to_string();
+            python_version = Some(version);
+        }
         install_conda_pkg(
             &env_root_dir,
             &mut conda_index,
             &conda_cache,
             &spec,
             &channels,
+            python_version.as_deref(),
         )?;
         pb.inc(1);
     }
@@ -247,6 +266,7 @@ fn install(
                 &conda_cache,
                 &update.to,
                 &channels,
+                python_version.as_deref(),
             )?;
         }
         pb.inc(1);
@@ -264,6 +284,7 @@ fn install(
                 &conda_cache,
                 &update.to,
                 &channels,
+                python_version.as_deref(),
             )?;
         } else {
             install_pypi_pkg(&env_root_dir, &update.to)?;
@@ -356,6 +377,7 @@ fn install_conda_pkg(
     conda_cache: &CondaCache,
     spec: &Spec,
     channels: &Vec<String>,
+    python_version: Option<&str>,
 ) -> anyhow::Result<()> {
     let pkg = conda_index.get_by_spec(&spec);
     let pkg = if let Some(pkg) = pkg {
@@ -377,14 +399,23 @@ fn install_conda_pkg(
         conda_index.download(&pkg)?;
     }
     let extracted_dir = conda_cache.get_extracted_dir(&pkg).unwrap();
-    let prefix_record = conda_cache.try_get_prefix_record(&pkg)?;
+    let mut prefix_record = conda_cache.try_get_prefix_record(&pkg)?;
     let cwd = std::env::current_dir()?;
-
     let env_root_prefix = env_root_dir.display().to_string();
 
+    let mut target_files = vec![];
     for file in prefix_record.paths() {
+        let target_path = if file.path.starts_with("site-packages/")
+            && prefix_record.noarch() == Some("python")
+        {
+            PathBuf::from(format!("lib/python{}", python_version.unwrap())).join(&file.path)
+        } else {
+            PathBuf::from(&file.path)
+        };
+        target_files.push(target_path.display().to_string());
+
         let from = &extracted_dir.join(&file.path);
-        let to = &env_root_dir.join(&file.path);
+        let to = &env_root_dir.join(&target_path);
         if !to.parent().unwrap().exists() {
             std::fs::create_dir_all(to.parent().unwrap())?;
         }
@@ -429,6 +460,7 @@ fn install_conda_pkg(
             }
         }
     }
+    prefix_record.files = target_files;
     std::env::set_current_dir(cwd)?;
     // dump prefix record
     let conda_meta_dir = env_root_dir.join("conda-meta");
@@ -454,21 +486,19 @@ fn uninstall_conda_pkg(
 ) -> anyhow::Result<()> {
     let pkg = conda_index.get_by_spec(spec).unwrap();
     let prefix_record = conda_cache.try_get_prefix_record(&pkg)?;
-    for file in prefix_record.paths() {
-        let to = &env_root_dir.join(&file.path);
-        if !to.exists() {
-            continue;
-        }
-        match file.path_type {
-            PathType::Directory => {
-                // skip
+    if prefix_record.noarch() == Some("python") {
+        uninstall_pypi_pkg(&env_root_dir, spec)?;
+    } else {
+        for file in prefix_record.files {
+            let to = &env_root_dir.join(&file);
+            if !to.exists() {
+                continue;
             }
-            _ => {
-                std::fs::remove_file(to)?;
-                if let Some(parent) = to.parent() {
-                    if parent.read_dir()?.next().is_none() {
-                        std::fs::remove_dir(parent)?;
-                    }
+
+            std::fs::remove_file(to)?;
+            if let Some(parent) = to.parent() {
+                if parent.read_dir()?.next().is_none() {
+                    std::fs::remove_dir(parent)?;
                 }
             }
         }

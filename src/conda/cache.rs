@@ -238,7 +238,7 @@ pub struct PrefixRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     extracted_package_dir: Option<String>,
     #[serde(default)]
-    files: Vec<String>,
+    pub files: Vec<String>,
     paths_data: PathsData,
     #[serde(skip_serializing_if = "Option::is_none")]
     link: Option<Link>,
@@ -251,6 +251,10 @@ pub struct PrefixRecord {
 impl PrefixRecord {
     pub fn paths(&self) -> Vec<&PathData> {
         self.paths_data.paths.iter().collect()
+    }
+
+    pub fn noarch(&self) -> Option<&str> {
+        self.repodata_record.noarch.as_deref()
     }
 }
 
