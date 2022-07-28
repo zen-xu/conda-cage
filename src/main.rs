@@ -158,7 +158,7 @@ fn install(
 
     let env_root_dir = PathBuf::from(&conda_info.root_prefix)
         .join("envs")
-        .join(env_name);
+        .join(&env_name);
 
     // Step 3: install new pkgs
     let total = (diff.conda.add.len() + diff.pypi.add.len()) as u64;
@@ -192,8 +192,20 @@ fn install(
         pb.inc(1);
     }
     // then install pypi pkgs
-    for spec in diff.pypi.add {
+    let mut pypi_adds = diff.pypi.add.clone();
+    pypi_adds.sort_by(|a, b| match (a.name.as_str(), b.name.as_str()) {
+        ("pip", _) => std::cmp::Ordering::Less,
+        (_, "pip") => std::cmp::Ordering::Greater,
+        ("wheel" | "setuptools", _) => std::cmp::Ordering::Less,
+        (_, "wheel" | "setuptools") => std::cmp::Ordering::Greater,
+        (_, _) => a.name.cmp(&b.name),
+    });
+
+    for spec in pypi_adds {
         pb.println(format!("installing {}:{}...", spec.name, spec.version));
+        if spec.name == "pip" {
+            conda.execute(["install", "-n", &env_name, "--no-deps", "pip"])?;
+        }
         install_pypi_pkg(&env_root_dir, &spec)?;
         pb.inc(1);
     }
@@ -225,14 +237,18 @@ fn install(
             update.to.version,
             update.to.build,
         ));
-        uninstall_conda_pkg(&env_root_dir, &conda_index, &conda_cache, &update.from)?;
-        install_conda_pkg(
-            &env_root_dir,
-            &mut conda_index,
-            &conda_cache,
-            &update.to,
-            &channels,
-        )?;
+        if update.to.channel == Some("pypi_0".to_string()) || update.to.name == "pip" {
+            install_pypi_pkg(&env_root_dir, &update.to)?;
+        } else {
+            uninstall_conda_pkg(&env_root_dir, &conda_index, &conda_cache, &update.from)?;
+            install_conda_pkg(
+                &env_root_dir,
+                &mut conda_index,
+                &conda_cache,
+                &update.to,
+                &channels,
+            )?;
+        }
         pb.inc(1);
     }
     for update in diff.pypi.update {
@@ -241,7 +257,17 @@ fn install(
             update.from.name, update.from.version, update.to.name, update.to.version,
         ));
         uninstall_pypi_pkg(&env_root_dir, &update.from)?;
-        install_pypi_pkg(&env_root_dir, &update.to)?;
+        if update.to.channel != Some("pypi_0".to_string()) {
+            install_conda_pkg(
+                &env_root_dir,
+                &mut conda_index,
+                &conda_cache,
+                &update.to,
+                &channels,
+            )?;
+        } else {
+            install_pypi_pkg(&env_root_dir, &update.to)?;
+        }
         pb.inc(1);
     }
     pb.finish_with_message(format!("updated {} pkgs", total));
@@ -263,15 +289,15 @@ fn install(
             .with_message("deleting new pkgs..")
     };
     for spec in &diff.conda.delete {
-        pb.set_message(format!(
+        pb.println(format!(
             "deleting {}:{}:{}...",
             spec.name, spec.version, spec.build,
         ));
         uninstall_conda_pkg(&env_root_dir, &conda_index, &conda_cache, spec)?;
         pb.inc(1);
     }
-    for spec in &diff.conda.delete {
-        pb.set_message(format!("deleting {}:{}...", spec.name, spec.version));
+    for spec in &diff.pypi.delete {
+        pb.println(format!("deleting {}:{}...", spec.name, spec.version));
         uninstall_pypi_pkg(&env_root_dir, spec)?;
         pb.inc(1);
     }
@@ -430,20 +456,36 @@ fn uninstall_conda_pkg(
     let prefix_record = conda_cache.try_get_prefix_record(&pkg)?;
     for file in prefix_record.paths() {
         let to = &env_root_dir.join(&file.path);
+        if !to.exists() {
+            continue;
+        }
         match file.path_type {
             PathType::Directory => {
                 // skip
             }
             _ => {
                 std::fs::remove_file(to)?;
+                if let Some(parent) = to.parent() {
+                    if parent.read_dir()?.next().is_none() {
+                        std::fs::remove_dir(parent)?;
+                    }
+                }
             }
         }
+    }
+
+    let conda_meta_dir = env_root_dir.join("conda-meta");
+    let meta_file = conda_meta_dir.join(format!(
+        "{}-{}-{}.json",
+        spec.name, spec.version, spec.build
+    ));
+    if meta_file.exists() {
+        std::fs::remove_file(meta_file)?;
     }
     Ok(())
 }
 
 fn install_pypi_pkg(env_root_dir: &PathBuf, spec: &Spec) -> anyhow::Result<()> {
-    //panic!("{}", env_root_dir.join("bin").join("pip").display());
     let pip_path = env_root_dir.join("bin").join("pip").display().to_string();
     let mut process = Command::new(&pip_path)
         .args([
@@ -467,16 +509,20 @@ fn install_pypi_pkg(env_root_dir: &PathBuf, spec: &Spec) -> anyhow::Result<()> {
 }
 
 fn uninstall_pypi_pkg(env_root_dir: &PathBuf, spec: &Spec) -> anyhow::Result<()> {
-    let process = Command::new(env_root_dir.join("bin/pip"))
+    let mut process = Command::new(env_root_dir.join("bin/pip"))
         .args(["uninstall", "-y", &spec.name])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()?;
-    let mut s = String::new();
-    match process.stderr.unwrap().read_to_string(&mut s) {
-        Err(e) => Err(e)?,
-        Ok(_) => Err(anyhow!(s))?,
+    let status = process.wait()?;
+    if !status.success() {
+        let mut s = String::new();
+        match process.stderr.unwrap().read_to_string(&mut s) {
+            Err(e) => Err(e)?,
+            Ok(_) => Err(anyhow!(s))?,
+        }
     }
+    Ok(())
 }
 
 #[test]
