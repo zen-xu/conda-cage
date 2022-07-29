@@ -2,6 +2,7 @@ use std::{io::Read, path::PathBuf};
 
 use buffered_reader::Memory;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::tarball_name;
 use crate::{error::IoResultExt, CondaInfo, Package, Result};
@@ -106,6 +107,10 @@ impl CondaCache {
         let paths_data_contents = std::fs::read(&paths_path).with_err_path(|| paths_path)?;
         let paths_data = serde_json::from_slice::<PathsData>(&paths_data_contents)?;
 
+        let index_path = extracted_dir.join("info/index.json");
+        let index_data_contents = std::fs::read(&index_path).with_err_path(|| index_path)?;
+        let index_data = serde_json::from_slice::<Value>(&index_data_contents)?;
+
         let repodata_record_path = extracted_dir.join("info/repodata_record.json");
         let repodata_record = if repodata_record_path.exists() {
             let repodata_record_contents =
@@ -140,7 +145,9 @@ impl CondaCache {
                 constrains: vec![],
                 track_features: "".to_string(),
                 features: "".to_string(),
-                noarch: None,
+                noarch: index_data
+                    .get("noarch")
+                    .map(|v| v.as_str().unwrap().to_string()),
                 preferred_env: None,
                 license: pkg.data.license.clone(),
                 license_family: pkg.data.license_family.clone(),
