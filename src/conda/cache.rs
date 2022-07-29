@@ -94,6 +94,20 @@ impl CondaCache {
         Ok(())
     }
 
+    pub fn get_entry_points(&self, pkg: &Package) -> Vec<EntryPoint> {
+        if let Some(extracted_dir) = self.get_extracted_dir(pkg) {
+            let link_path = extracted_dir.join("info/link.json");
+            if !link_path.exists() {
+                return vec![];
+            }
+            let link_data_contents = std::fs::read(&link_path).unwrap();
+            let link_data = serde_json::from_slice::<NoarchLink>(&link_data_contents).unwrap();
+            link_data.noarch.entry_points
+        } else {
+            vec![]
+        }
+    }
+
     pub fn try_get_prefix_record(&self, pkg: &Package) -> Result<PrefixRecord> {
         let extracted_dir = {
             let extracted_dir = self.get_extracted_dir(pkg);
@@ -189,9 +203,14 @@ fn extracted_dir(name: &str, version: &str, build: &str) -> String {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Noarch {
+struct NoarchLink {
+    noarch: Noarch,
+}
+
+#[derive(Debug, Deserialize)]
+struct Noarch {
     #[serde(default)]
-    pub entry_points: Vec<String>,
+    pub entry_points: Vec<EntryPoint>,
     #[serde(rename = "type")]
     pub noarch_type: String,
 }
