@@ -211,8 +211,6 @@ struct NoarchLink {
 struct Noarch {
     #[serde(default)]
     pub entry_points: Vec<EntryPoint>,
-    #[serde(rename = "type")]
-    pub noarch_type: String,
 }
 
 #[derive(Debug, PartialEq)]

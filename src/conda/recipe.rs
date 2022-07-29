@@ -6,11 +6,13 @@ use crate::{Error, Result};
 #[derive(Debug)]
 pub struct CondaRecipe {
     specs: HashMap<String, Spec>,
+    pub python_version: Option<String>,
 }
 
 impl CondaRecipe {
     pub fn try_new(content: &str) -> Result<Self> {
         let mut specs = HashMap::new();
+        let mut python_version = None;
 
         for line in content.lines() {
             let line = line.trim();
@@ -40,10 +42,23 @@ impl CondaRecipe {
                 _ => return Err(Error::InvalidRecipe),
             };
 
+            if spec.name == "python" {
+                python_version = Some(
+                    spec.version
+                        .split('.')
+                        .take(2)
+                        .collect::<Vec<&str>>()
+                        .join(".")
+                        .to_string(),
+                );
+            }
             specs.insert(spec.name.clone(), spec);
         }
 
-        Ok(Self { specs })
+        Ok(Self {
+            specs,
+            python_version,
+        })
     }
 
     pub fn diff(&self, new_recipe: &CondaRecipe) -> DiffInfo {

@@ -4,7 +4,7 @@ use std::{
     ffi::OsStr,
     fs::read_link,
     io::Read,
-    os::unix::fs::symlink,
+    os::unix::{fs::symlink, prelude::PermissionsExt},
     path::PathBuf,
     process::{self, Command, Stdio},
 };
@@ -178,7 +178,7 @@ fn install(
     };
 
     // install conda pkgs first
-    let mut python_version = None;
+    let python_version = new_recipe.python_version.clone();
     let mut conda_adds = diff.conda.add.clone();
     conda_adds.sort_by(|a, b| match (a.name.as_str(), b.name.as_str()) {
         ("python", _) => std::cmp::Ordering::Less,
@@ -190,16 +190,6 @@ fn install(
             "installing {}:{}:{}...",
             spec.name, spec.version, spec.build
         ));
-        if spec.name == "python" {
-            let version = spec
-                .version
-                .split('.')
-                .take(2)
-                .collect::<Vec<&str>>()
-                .join(".")
-                .to_string();
-            python_version = Some(version);
-        }
         install_conda_pkg(
             &env_root_dir,
             &mut conda_index,
@@ -408,7 +398,7 @@ fn install_conda_pkg(
         let target_path = if file.path.starts_with("site-packages/")
             && prefix_record.noarch() == Some("python")
         {
-            PathBuf::from(format!("lib/python{}", python_version.unwrap())).join(&file.path)
+            PathBuf::from(format!("lib/python{}", &python_version.unwrap())).join(&file.path)
         } else {
             PathBuf::from(&file.path)
         };
@@ -460,6 +450,33 @@ fn install_conda_pkg(
             }
         }
     }
+
+    for entry_point in conda_cache.get_entry_points(&pkg) {
+        let python_bin = &env_root_dir.join(format!("bin/python{}", python_version.unwrap()));
+        let script_contents = format!(
+            r#"#!{}
+# -*- coding: utf-8 -*-
+import re
+import sys
+
+from {} import {}
+
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw?|\.exe)?$', '', sys.argv[0])
+    sys.exit(%(func)s())
+"#,
+            python_bin.display().to_string().trim(),
+            entry_point.module,
+            entry_point.func
+        );
+        let script_path = &env_root_dir.join(format!("bin/{}", entry_point.cli));
+        std::fs::write(&script_path, script_contents)?;
+        let metadata = script_path.metadata()?;
+        let mut permission = metadata.permissions();
+        permission.set_mode(0o775);
+        target_files.push(script_path.display().to_string());
+    }
+
     prefix_record.files = target_files;
     std::env::set_current_dir(cwd)?;
     // dump prefix record
