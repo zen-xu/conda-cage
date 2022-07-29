@@ -188,6 +188,72 @@ fn extracted_dir(name: &str, version: &str, build: &str) -> String {
     format!("{name}-{version}-{build}")
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Noarch {
+    #[serde(default)]
+    pub entry_points: Vec<String>,
+    #[serde(rename = "type")]
+    pub noarch_type: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct EntryPoint {
+    pub cli: String,
+    pub module: String,
+    pub func: String,
+}
+
+impl<'de> Deserialize<'de> for EntryPoint {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Visitor;
+
+        struct EntryPointVisitor;
+
+        impl<'de> Visitor<'de> for EntryPointVisitor {
+            type Value = EntryPoint;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("<cli> = <module>:<func>")
+            }
+
+            fn visit_str<E>(self, v: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let splitted: Vec<_> = v.split("=").collect();
+                if splitted.len() != 2 {
+                    Err(E::custom(v))
+                } else {
+                    let cli = splitted[0].trim();
+                    let module_func = splitted[1].trim();
+                    let module_func_splitted: Vec<_> = module_func.split(":").collect();
+                    if module_func_splitted.len() != 2 {
+                        Err(E::custom(v))
+                    } else {
+                        Ok(EntryPoint {
+                            cli: cli.to_string(),
+                            module: module_func_splitted[0].to_string(),
+                            func: module_func_splitted[1].to_string(),
+                        })
+                    }
+                }
+            }
+
+            fn visit_string<E>(self, v: String) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(&v)
+            }
+        }
+
+        deserializer.deserialize_string(EntryPointVisitor)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct PackageRecord {
     name: String,
@@ -346,4 +412,17 @@ fn test_get_prefix_record() {
     index.download(&pkg).unwrap();
     let prefix_record = cache.try_get_prefix_record(&pkg).unwrap();
     println!("{:#?}", prefix_record)
+}
+
+#[test]
+fn deserialize_entrypoint() {
+    let entry_point = "\"juputer-lab = jupyterlab.labapp:main\"";
+    assert_eq!(
+        serde_json::from_str::<EntryPoint>(entry_point).unwrap(),
+        EntryPoint {
+            cli: "juputer-lab".to_string(),
+            module: "jupyterlab.labapp".to_string(),
+            func: "main".to_string(),
+        }
+    )
 }
