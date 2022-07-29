@@ -194,6 +194,57 @@ impl RecipeDiff {
     }
 }
 
+impl Display for RecipeDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !self.adds.is_empty() {
+            writeln!(
+                f,
+                "{}",
+                style(format!("Add {} packages:", self.adds.len()))
+                    .green()
+                    .bold()
+            )?;
+            for pkg in &self.adds {
+                writeln!(f, " {} {:#}", style("+").green().to_string(), pkg)?;
+            }
+        }
+
+        if !self.updates.is_empty() {
+            writeln!(
+                f,
+                "{}",
+                style(format!("Update {} packages:", self.updates.len()))
+                    .blue()
+                    .bold()
+            )?;
+            for Update { from, to } in &self.updates {
+                writeln!(
+                    f,
+                    " {} {:#} => {:#}",
+                    style("*").blue().to_string(),
+                    from,
+                    to
+                )?;
+            }
+        }
+
+        if !self.deletes.is_empty() {
+            writeln!(
+                f,
+                "{}",
+                style(format!("Delete {} packages:", self.deletes.len()))
+                    .red()
+                    .bold()
+            )?;
+            for pkg in &self.deletes {
+                writeln!(f, " {} {:#}", style("-").red().to_string(), pkg)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Update {
     pub from: Package,
