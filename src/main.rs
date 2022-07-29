@@ -2,7 +2,7 @@ use std::{
     borrow::Cow,
     collections::HashSet,
     ffi::OsStr,
-    fs::read_link,
+    fs::{read_link, Permissions},
     io::Read,
     os::unix::{fs::symlink, prelude::PermissionsExt},
     path::PathBuf,
@@ -463,17 +463,16 @@ from {} import {}
 
 if __name__ == '__main__':
     sys.argv[0] = re.sub(r'(-script\.pyw?|\.exe)?$', '', sys.argv[0])
-    sys.exit(%(func)s())
+    sys.exit({}())
 "#,
             python_bin.display().to_string().trim(),
             entry_point.module,
-            entry_point.func
+            entry_point.func.split('.').collect::<Vec<_>>()[0],
+            entry_point.func,
         );
         let script_path = &env_root_dir.join(format!("bin/{}", entry_point.cli));
         std::fs::write(&script_path, script_contents)?;
-        let metadata = script_path.metadata()?;
-        let mut permission = metadata.permissions();
-        permission.set_mode(0o775);
+        std::fs::set_permissions(script_path, Permissions::from_mode(0o775))?;
         target_files.push(script_path.display().to_string());
     }
 
@@ -589,13 +588,14 @@ fn run() -> anyhow::Result<()> {
 
 fn binary_replace<'t>(data: &'t [u8], from: &str, to: &str) -> Cow<'t, [u8]> {
     let from = regex::escape(from);
-    let pattern = regex::bytes::Regex::new(&format!("{}([^\0]*?)\0", &from)).unwrap();
+    let suffix_pattern = String::from_utf8(b"([^\0]*?)\0".to_vec()).unwrap();
+    let pattern = regex::bytes::Regex::new(&format!("{}{}", &from, &suffix_pattern)).unwrap();
     let data = pattern.replace_all(&data, |cap: &regex::bytes::Captures| {
         let captured_data = cap[0].to_owned();
         let original_bytes_count = captured_data.len();
         let mut replaced_bytes = regex::bytes::Regex::new(&from)
             .unwrap()
-            .replace(&captured_data, &to.as_bytes()[..])
+            .replace_all(&captured_data, &to.as_bytes()[..])
             .to_vec();
         let replaced_bytes_count = replaced_bytes.len();
         if replaced_bytes_count > original_bytes_count {
@@ -605,4 +605,12 @@ fn binary_replace<'t>(data: &'t [u8], from: &str, to: &str) -> Cow<'t, [u8]> {
         replaced_bytes
     });
     data
+}
+
+#[test]
+fn shit_replace() {
+    let data = b" asd asd sad /tmp/build/890-888/include asd-afasf /tmp/build/890-888/chea\x00";
+    let new_data = binary_replace(data, "/tmp/build/890-888", "/home");
+    println!("{}", new_data.len());
+    println!("{}", String::from_utf8(new_data.to_vec()).unwrap());
 }
