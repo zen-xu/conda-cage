@@ -20,6 +20,7 @@ use conda_cage::{
     CondaIndex, CondaInfo,
 };
 use indicatif::{ProgressBar, ProgressStyle};
+use tokio::io::AsyncReadExt;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -613,4 +614,181 @@ fn shit_replace() {
     let new_data = binary_replace(data, "/tmp/build/890-888", "/home");
     println!("{}", new_data.len());
     println!("{}", String::from_utf8(new_data.to_vec()).unwrap());
+}
+
+#[tokio::test]
+async fn monitor() -> anyhow::Result<()> {
+    use std::collections::HashMap;
+    use std::process::Stdio;
+    use tokio::{
+        io::{AsyncBufReadExt, BufReader},
+        process, select, spawn,
+        sync::mpsc,
+    };
+
+    let data = std::fs::read_to_string("env.recipe")?;
+    let old_recipe = CondaRecipe::try_new("")?;
+    let recipe = CondaRecipe::try_new(&data)?;
+    let diff = old_recipe.diff(&recipe);
+
+    // update_pkgs: new conda pkg => old conda/pypi pkg
+    let mut update_conda_pkgs = HashMap::new();
+    let mut update_pypi_pkgs = HashMap::new();
+    let mut install_conda_pkgs = vec![];
+    let mut install_pypi_pkgs = vec![];
+    let mut uninstall_conda_pkgs = vec![];
+    let mut uninstall_pypi_pkgs = vec![];
+    for pkg in diff.conda.add {
+        install_conda_pkgs.push(format!("{}={}={}", pkg.name, pkg.version, pkg.build));
+    }
+    for update in diff.conda.update {
+        if update.to.channel == Some("pypi".to_string()) {
+            install_pypi_pkgs.push(format!("{}=={}", update.to.name, update.to.version));
+        } else {
+            install_conda_pkgs.push(format!(
+                "{}={}={}",
+                update.to.name, update.to.version, update.to.build
+            ));
+            update_conda_pkgs.insert(update.to.to_string(), update.from.to_string());
+        }
+    }
+    for pkg in diff.conda.delete {
+        uninstall_conda_pkgs.push(format!("{}={}={}", pkg.name, pkg.version, pkg.build));
+    }
+    for pkg in diff.pypi.add {
+        install_pypi_pkgs.push(format!("{}=={}", pkg.name, pkg.version));
+    }
+    for update in diff.pypi.update {
+        if update.to.channel == Some("pypi".to_string()) {
+            install_pypi_pkgs.push(format!("{}=={}", update.to.name, update.to.version));
+            update_pypi_pkgs.insert(
+                format!("{}={}", update.to.name, update.to.version),
+                update.from.to_string(),
+            );
+        } else {
+            install_conda_pkgs.push(format!(
+                "{}={}={}",
+                update.to.name, update.to.version, update.to.build
+            ));
+            update_conda_pkgs.insert(update.to.to_string(), update.from.to_string());
+        }
+    }
+    for pkg in diff.pypi.delete {
+        uninstall_pypi_pkgs.push(format!("{}=={}", pkg.name, pkg.version));
+    }
+
+    let (event_tx, mut event_rx) = mpsc::channel::<Event>(10);
+
+    let printer = spawn({
+        let total = (install_conda_pkgs.len() + install_pypi_pkgs.len()) as u64;
+        let pb = ProgressBar::new(total)
+            .with_style(ProgressStyle::default_bar().template("{wide_bar} {pos}/{len}"));
+        async move {
+            loop {
+                if let Some(event) = event_rx.recv().await {
+                    match event {
+                        Event::Message(s) => println!("{}", s),
+                        Event::AddPackage(s) => {
+                            pb.println(format!("installing {}...", s));
+                        }
+                        Event::UpdatePackage { from, to } => {
+                            pb.println(format!("updating {} => {}...", from, to));
+                        }
+                        Event::RemovePackage(s) => pb.println(format!("deleting {}...", s)),
+                        Event::Increase => {
+                            if pb.position() < pb.length() {
+                                pb.inc(1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    let mut child = process::Command::new("conda")
+        .args([
+            "install",
+            "-y",
+            "-vv",
+            "-n",
+            "demo",
+            "--force-reinstall",
+            "-S",
+        ])
+        .args(&install_conda_pkgs)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
+    let pattern = regex::Regex::new("==> LINKING PACKAGE: (.*) <==")?;
+    let mut first_pkg = false;
+
+    loop {
+        select! {
+            stdout_line = stdout.next_line() => {
+                if let Ok(Some(line)) = stdout_line {
+                    if line.starts_with("## Package Plan ##") {
+                        let _ = event_tx.send(Event::Message("verifying environment...".to_string())).await;
+                    } else if line.starts_with("Verifying transaction: done") {
+                        let _ = event_tx.send(Event::Message("verifying environment done".to_string())).await;
+                    }
+                }
+            },
+            stderr_line = stderr.next_line() => {
+
+                if let Ok(Some(line)) = stderr_line {
+                    if let Some(cap) = pattern.captures(&line) {
+                        if !first_pkg {
+                            first_pkg = false;
+                            let _ = event_tx.send(Event::Increase).await;
+                        }
+                        let pkg = cap.get(1).unwrap().as_str().to_string();
+                        let _ = event_tx.send(Event::AddPackage(pkg)).await;
+                    }
+                }
+            },
+            _ = child.wait() => {
+                break
+            }
+        }
+    }
+
+    for pkg in install_pypi_pkgs {
+        if let Some(from_pkg) = update_pypi_pkgs.get(&pkg) {
+            let _ = event_tx
+                .send(Event::UpdatePackage {
+                    from: from_pkg.clone(),
+                    to: pkg.clone(),
+                })
+                .await;
+        } else {
+            let _ = event_tx.send(Event::AddPackage(pkg.clone())).await;
+        }
+        let mut child = process::Command::new("conda")
+            .args(["run", "-n", "demo", "pip", "install", "--no-deps", &pkg])
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let status = child.wait().await?;
+        if !status.success() {
+            let mut error_buf = String::new();
+            child.stderr.unwrap().read_to_string(&mut error_buf).await?;
+            return Err(anyhow!("install {} failed: {}", pkg, error_buf));
+        }
+        let _ = event_tx.send(Event::Increase).await;
+    }
+
+    printer.abort();
+    let _ = printer.await;
+    Ok(())
+}
+
+enum Event {
+    Message(String),
+    AddPackage(String),
+    UpdatePackage { from: String, to: String },
+    RemovePackage(String),
+    Increase,
 }

@@ -109,7 +109,7 @@ pub struct Spec {
 
 impl Display for Spec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}:{}", self.name, self.version, self.build)
+        write!(f, "{}-{}-{}", self.name, self.version, self.build)
     }
 }
 
