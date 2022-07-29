@@ -1,5 +1,6 @@
 pub mod conda;
 mod error;
+mod recipe;
 
 pub use conda::{CondaIndex, CondaInfo, Package, PackageData};
 pub use error::Error;
