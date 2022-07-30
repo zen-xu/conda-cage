@@ -252,7 +252,7 @@ pub struct Update {
 }
 
 impl Recipe {
-    fn diff(self, mut new_recipe: Self) -> RecipeDiff {
+    pub fn diff(self, mut new_recipe: Self) -> RecipeDiff {
         let mut diff = RecipeDiff::default();
         for (pkg_name, old_pkg) in self.packages {
             if let Some(new_pkg) = new_recipe.packages.remove(&pkg_name) {
