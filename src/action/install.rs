@@ -13,7 +13,7 @@ async fn install(
     force_reinstall: bool,
     show_diff: bool,
 ) -> anyhow::Result<()> {
-    // Step 1: check env existence, if not exist, create it
+    // check env existence, if not exist, create it
     let old_recipe = {
         match run_conda(["list", "-n", env_name]).await {
             Ok(contents) => {
@@ -44,7 +44,7 @@ async fn install(
     }
     let collections = collect_packages(&diff);
 
-    // Step 1: delete conda packages
+    // delete conda packages
     if !collections.conda_delete_pkgs.is_empty() {
         run_conda([
             "remove",
@@ -61,7 +61,7 @@ async fn install(
         ])
         .await?;
     }
-    // Step 2: delete pypi packages
+    // delete pypi packages
     if !collections.pypi_delete_pkgs.is_empty() {
         let mut args = vec!["run", "-n", env_name, "pip", "uninstall", "-y"];
         let delete_pkg_names = collections
@@ -72,7 +72,7 @@ async fn install(
         args.extend(delete_pkg_names);
         run_conda(&args).await?;
     }
-    // Step 3: install conda packages
+    // install conda packages
     if !collections.conda_install_pkgs.is_empty() {
         run_conda([
             "install",
@@ -89,7 +89,7 @@ async fn install(
         ])
         .await?;
     }
-    // Step 4: install pypi packages
+    // install pypi packages
     if !collections.pypi_install_pkgs.is_empty() {
         if !collections
             .pypi_install_pkgs
