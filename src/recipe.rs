@@ -8,7 +8,7 @@ pub struct Recipe {
     pub packages: HashMap<String, Package>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Package {
     pub name: String,
     pub version: String,
@@ -64,7 +64,7 @@ impl Display for Package {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum PackageKind {
     PyPi,
     Conda { build: String, channel: String },

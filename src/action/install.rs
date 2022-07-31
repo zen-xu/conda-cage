@@ -1,8 +1,11 @@
 use std::{collections::VecDeque, ffi::OsStr, process::Stdio};
 
+use indicatif::{ProgressBar, ProgressStyle};
 use tokio::{
-    io::AsyncReadExt,
+    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
     process::{Child, Command},
+    select, spawn,
+    sync::mpsc,
 };
 
 use crate::recipe::{Package, Recipe, RecipeDiff};
@@ -13,7 +16,6 @@ async fn install(
     force_reinstall: bool,
     show_diff: bool,
 ) -> anyhow::Result<()> {
-    // check env existence, if not exist, create it
     let old_recipe = {
         match run_conda(["list", "-n", env_name]).await {
             Ok(contents) => {
@@ -29,22 +31,39 @@ async fn install(
             }
         }
     };
-    let old_recipe = if old_recipe.is_none() || force_reinstall {
-        run_conda(["env", "remove", "-n", env_name]).await?;
-        run_conda(["create", "-y", "--no-default-packages", "-n", env_name]).await?;
-        "".try_into().unwrap()
+    let (old_recipe, need_create_env) = if old_recipe.is_none() || force_reinstall {
+        ("".try_into().unwrap(), true)
     } else {
-        old_recipe.unwrap()
+        (old_recipe.unwrap(), false)
     };
-
     let new_recipe: Recipe = Recipe::try_from(new_recipe).map_err(|e| anyhow::anyhow!(e))?;
     let diff = old_recipe.diff(new_recipe);
     if show_diff {
         println!("{:#}", diff);
     }
+
+    let default_style = ProgressStyle::default_bar().template("{prefix:.bold.dim} {msg}");
+    let pb = ProgressBar::new(1)
+        .with_style(default_style.clone())
+        .with_prefix("[1/3]")
+        .with_message("checking env...");
+    if need_create_env {
+        pb.set_message(format!("creating env '{}'...", env_name));
+        run_conda(["env", "remove", "-n", env_name]).await?;
+        run_conda(["create", "-y", "--no-default-packages", "-n", env_name]).await?;
+        pb.finish_with_message(format!("create env '{}' success", env_name));
+    } else {
+        pb.finish_with_message(format!("check env '{}' done", env_name));
+    }
+
     let collections = collect_packages(&diff);
 
     // delete conda packages
+    let delete_counts = collections.conda_delete_pkgs.len() + collections.pypi_delete_pkgs.len();
+    let pb = ProgressBar::new(1)
+        .with_style(default_style.clone())
+        .with_prefix("[2/3]")
+        .with_message(format!("deleting {} pkgs...", delete_counts));
     if !collections.conda_delete_pkgs.is_empty() {
         run_conda([
             "remove",
@@ -72,9 +91,48 @@ async fn install(
         args.extend(delete_pkg_names);
         run_conda(&args).await?;
     }
+    pb.finish_with_message(format!("deleted {} pkgs", delete_counts));
+
     // install conda packages
+    // spawn a printer
+    let (event_tx, mut event_rx) = mpsc::channel::<InstallEvent>(10);
+    let printer = spawn({
+        let install_counts =
+            collections.conda_install_pkgs.len() + collections.pypi_install_pkgs.len();
+
+        let pb = if install_counts > 0 {
+            ProgressBar::new(install_counts as u64)
+                .with_style(
+                    ProgressStyle::default_bar()
+                        .template("{prefix:.bold.dim} {msg}\n{wide_bar} {pos}/{len}"),
+                )
+                .with_prefix("[3/3]")
+                .with_message("installing pkgs...")
+        } else {
+            ProgressBar::new(install_counts as u64)
+                .with_style(ProgressStyle::default_bar().template("{prefix:.bold.dim} {msg}"))
+                .with_prefix("[3/3]")
+                .with_message("installing pkgs...")
+        };
+        async move {
+            loop {
+                if let Some(event) = event_rx.recv().await {
+                    match event {
+                        InstallEvent::Message(s) => pb.println(s),
+                        InstallEvent::Package(pkg) => pb.println(format!("installing {:#}", pkg)),
+                        InstallEvent::Increase => pb.inc(1),
+                        InstallEvent::Done => {
+                            pb.finish_with_message(format!("installed {} pkgs", install_counts));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
     if !collections.conda_install_pkgs.is_empty() {
-        run_conda([
+        let mut child = spawn_conda([
             "install",
             "--no-deps",
             "-y",
@@ -86,8 +144,40 @@ async fn install(
                 .map(|p| p.to_string())
                 .collect::<Vec<_>>()
                 .join(" "),
-        ])
-        .await?;
+        ])?;
+        let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+        let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
+        let pattern = regex::Regex::new("==> LINKING PACKAGE: (.*) <==")?;
+        let mut first_pkg = false;
+
+        loop {
+            select! {
+                stdout_line = stdout.next_line() => {
+                    if let Ok(Some(line)) = stdout_line {
+                        if line.starts_with("## Package Plan ##") {
+                            let _ = event_tx.send(InstallEvent::Message("verifying environment...".to_string())).await;
+                        } else if line.starts_with("Verifying transaction: done") {
+                            let _ = event_tx.send(InstallEvent::Message("verifying environment done".to_string())).await;
+                        }
+                    }
+                },
+                stderr_line = stderr.next_line() => {
+                    if let Ok(Some(line)) = stderr_line {
+                        if let Some(cap) = pattern.captures(&line) {
+                            if !first_pkg {
+                                first_pkg = false;
+                                let _ = event_tx.send(InstallEvent::Increase).await;
+                            }
+                            /* let pkg = cap.get(1).unwrap().as_str().to_string();
+                            let _ = event_tx.send(InstallEvent::Package(pkg)).await; */
+                        }
+                    }
+                },
+                _ = child.wait() => {
+                    break
+                }
+            }
+        }
     }
     // install pypi packages
     if !collections.pypi_install_pkgs.is_empty() {
@@ -106,6 +196,7 @@ async fn install(
         let mut pkgs = VecDeque::from(collections.pypi_install_pkgs.clone());
         while !pkgs.is_empty() {
             let pkg = pkgs.pop_front().unwrap();
+            let _ = event_tx.send(InstallEvent::Package(pkg.clone())).await;
             run_conda([
                 "run",
                 "-n",
@@ -116,8 +207,12 @@ async fn install(
                 pkg.to_string().as_str(),
             ])
             .await?;
+            let _ = event_tx.send(InstallEvent::Increase).await;
         }
     }
+
+    let _ = event_tx.send(InstallEvent::Done).await;
+    let _ = printer.await;
 
     Ok(())
 }
@@ -244,6 +339,13 @@ where
     }
 }
 
+enum InstallEvent {
+    Message(String),
+    Package(Package),
+    Increase,
+    Done,
+}
+
 #[tokio::test]
 async fn t() -> anyhow::Result<()> {
     install(
@@ -266,7 +368,7 @@ tk                        8.6.12               hb8d0fd4_0
 tzdata                    2022a                hda174b7_0
 wheel                     0.37.1             pyhd3eb1b0_0
 xz                        5.2.5                h1a28f6b_1
-werkzeug                  2.2.1                    pypi_0    pypi
+#werkzeug                  2.2.1                    pypi_0    pypi
 zlib                      1.2.12               h5a0b063_2
 django                    4.0.6                    pypi_0    pypi
 "#,
