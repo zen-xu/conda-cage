@@ -1,3 +1,4 @@
+mod action;
 pub mod conda;
 mod error;
 pub mod recipe;
