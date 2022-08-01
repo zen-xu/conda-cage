@@ -48,6 +48,7 @@ async fn install(
         .with_style(default_style.clone())
         .with_prefix("[1/3]")
         .with_message("checking env...");
+    pb.tick();
     if need_create_env {
         pb.set_message(format!("creating env '{}'...", env_name));
         run_conda(["env", "remove", "-n", env_name]).await?;
@@ -65,6 +66,7 @@ async fn install(
         .with_style(default_style.clone())
         .with_prefix("[2/3]")
         .with_message(format!("deleting {} pkgs...", delete_counts));
+    pb.tick();
     if !collections.conda_delete_pkgs.is_empty() {
         let mut args = vec!["remove", "-n", env_name, "--force", "-y"];
         let delete_pkg_names = collections
@@ -109,6 +111,7 @@ async fn install(
                 .with_prefix("[3/3]")
                 .with_message("installing pkgs...")
         };
+        pb.tick();
         async move {
             loop {
                 if let Some(event) = event_rx.recv().await {
