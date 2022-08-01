@@ -5,7 +5,7 @@ use std::{
 
 use console::style;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct Recipe {
     pub channels: HashSet<String>,
     pub packages: HashMap<String, Package>,

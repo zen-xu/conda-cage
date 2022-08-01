@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueHint};
 
-use conda_cage::action;
+use conda_cage::{
+    action::{self, try_get_env_recipe},
+    recipe::Recipe,
+};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -48,6 +51,23 @@ enum Commands {
         #[clap(long, value_parser, help = "Rename the installing env name")]
         rename: Option<String>,
     },
+    #[clap(about = "Diff remote env and local env")]
+    Diff {
+        #[clap(value_parser, help = "The env name you need to diff")]
+        env_name: String,
+
+        #[clap(long, value_parser, help = "Specify the version of env")]
+        version: Option<String>,
+
+        #[clap(
+            short,
+            long,
+            value_hint = ValueHint::FilePath,
+            value_parser = validate_path,
+            help = "Use the given file as remote env"
+        )]
+        file: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -80,6 +100,32 @@ async fn main() -> anyhow::Result<()> {
             };
             let env_name = rename.unwrap_or(env_name);
             action::install(&env_name, &new_recipe, force, show_diff).await?;
+        }
+        Commands::Diff {
+            env_name,
+            version,
+            file,
+        } => {
+            let new_recipe = if let Some(file) = file {
+                std::fs::read_to_string(file)?
+            } else {
+                let version = version
+                    .or(Some("master".to_string()))
+                    .map(|v| {
+                        if v == "latest" {
+                            "master".to_string()
+                        } else {
+                            v
+                        }
+                    })
+                    .unwrap();
+                fetch_recipe(&env_name, &version).await?
+            };
+            let new_recipe =
+                Recipe::try_from(new_recipe.as_str()).map_err(|e| anyhow::anyhow!(e))?;
+            let old_recipe = try_get_env_recipe(&env_name).await?.unwrap_or_default();
+            let diff = old_recipe.diff(new_recipe);
+            println!("{:#}", diff);
         }
     }
 
