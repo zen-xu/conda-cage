@@ -8,7 +8,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, BufReader},
     process::{Child, Command},
-    select, spawn,
+    select, signal, spawn,
     sync::mpsc,
 };
 
@@ -177,6 +177,8 @@ pub async fn install(
             .collect::<HashMap<_, _>>();
         let pattern = regex::Regex::new("==> LINKING PACKAGE: (?:.*?)::(.*) <==")?;
         let mut first_pkg = false;
+
+        let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())?;
         loop {
             select! {
                 stdout_line = stdout.next_line() => {
@@ -201,6 +203,14 @@ pub async fn install(
                         }
                     }
                 },
+                _ = sigterm.recv() => {
+                    child.kill().await?;
+                    return Err(anyhow::anyhow!("receive sigterm"));
+                }
+                _ = signal::ctrl_c() => {
+                    child.kill().await?;
+                    return Err(anyhow::anyhow!("receive ctrl c"));
+                }
                 _ = child.wait() => {
                     break
                 }
