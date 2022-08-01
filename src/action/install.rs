@@ -179,13 +179,16 @@ pub async fn install(
         let mut first_pkg = false;
 
         let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())?;
+        let _ = event_tx
+            .send(InstallEvent::Message(
+                "verifying environment...".to_string(),
+            ))
+            .await;
         loop {
             select! {
                 stdout_line = stdout.next_line() => {
                     if let Ok(Some(line)) = stdout_line {
-                        if line.starts_with("## Package Plan ##") {
-                            let _ = event_tx.send(InstallEvent::Message("verifying environment...".to_string())).await;
-                        } else if line.starts_with("Verifying transaction: done") {
+                        if line.starts_with("Verifying transaction: done") {
                             let _ = event_tx.send(InstallEvent::Message("verifying environment done".to_string())).await;
                         }
                     }
