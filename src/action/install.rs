@@ -14,7 +14,7 @@ use tokio::{
 
 use crate::recipe::{Package, Recipe, RecipeDiff};
 
-async fn install(
+pub async fn install(
     env_name: &str,
     new_recipe: &str,
     force_reinstall: bool,
