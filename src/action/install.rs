@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, ffi::OsStr, process::Stdio};
+use std::{
+    collections::{HashMap, VecDeque},
+    ffi::OsStr,
+    process::Stdio,
+};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use tokio::{
@@ -130,7 +134,16 @@ async fn install(
     });
 
     if !collections.conda_install_pkgs.is_empty() {
-        let mut args = vec!["install", "--no-deps", "-y", "-n", env_name];
+        let mut args = vec![
+            "install",
+            "--no-deps",
+            "-S",
+            "--force-reinstall",
+            "-vv",
+            "-y",
+            "-n",
+            env_name,
+        ];
         let channels = channels
             .iter()
             .map(|c| ["-c", c])
@@ -147,9 +160,23 @@ async fn install(
         let mut child = spawn_conda(args)?;
         let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
         let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
-        let pattern = regex::Regex::new("==> LINKING PACKAGE: (.*) <==")?;
-        let mut first_pkg = false;
 
+        // indexes are used to map id from conda log to pkg
+        let indexes = collections
+            .conda_install_pkgs
+            .iter()
+            .map(|p| {
+                let id = match &p.kind {
+                    crate::recipe::PackageKind::PyPi => format!("{}-{}", p.name, p.version),
+                    crate::recipe::PackageKind::Conda { build, channel: _ } => {
+                        format!("{}-{}-{}", p.name, p.version, build)
+                    }
+                };
+                (id, p.clone())
+            })
+            .collect::<HashMap<_, _>>();
+        let pattern = regex::Regex::new("==> LINKING PACKAGE: (?:.*?)::(.*) <==")?;
+        let mut first_pkg = false;
         loop {
             select! {
                 stdout_line = stdout.next_line() => {
@@ -168,8 +195,9 @@ async fn install(
                                 first_pkg = false;
                                 let _ = event_tx.send(InstallEvent::Increase).await;
                             }
-                            /* let pkg = cap.get(1).unwrap().as_str().to_string();
-                            let _ = event_tx.send(InstallEvent::Package(pkg)).await; */
+                            let pkg = cap.get(1).unwrap().as_str().to_string();
+                            let pkg = indexes[&pkg].clone();
+                            let _ = event_tx.send(InstallEvent::Package(pkg)).await;
                         }
                     }
                 },
