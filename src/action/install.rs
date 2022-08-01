@@ -37,6 +37,7 @@ async fn install(
         (old_recipe.unwrap(), false)
     };
     let new_recipe: Recipe = Recipe::try_from(new_recipe).map_err(|e| anyhow::anyhow!(e))?;
+    let channels = new_recipe.channels.clone();
     let diff = old_recipe.diff(new_recipe);
     if show_diff {
         println!("{:#}", diff);
@@ -65,20 +66,14 @@ async fn install(
         .with_prefix("[2/3]")
         .with_message(format!("deleting {} pkgs...", delete_counts));
     if !collections.conda_delete_pkgs.is_empty() {
-        run_conda([
-            "remove",
-            "--force",
-            "-y",
-            "-n",
-            env_name,
-            &collections
-                .conda_delete_pkgs
-                .iter()
-                .map(|p| p.name.as_str())
-                .collect::<Vec<_>>()
-                .join(" "),
-        ])
-        .await?;
+        let mut args = vec!["remove", "-n", env_name, "--force", "-y"];
+        let delete_pkg_names = collections
+            .conda_delete_pkgs
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>();
+        args.extend(delete_pkg_names);
+        run_conda(args).await?;
     }
     // delete pypi packages
     if !collections.pypi_delete_pkgs.is_empty() {
@@ -89,7 +84,7 @@ async fn install(
             .map(|p| p.name.as_str())
             .collect::<Vec<_>>();
         args.extend(delete_pkg_names);
-        run_conda(&args).await?;
+        run_conda(args).await?;
     }
     pb.finish_with_message(format!("deleted {} pkgs", delete_counts));
 
@@ -132,19 +127,21 @@ async fn install(
     });
 
     if !collections.conda_install_pkgs.is_empty() {
-        let mut child = spawn_conda([
-            "install",
-            "--no-deps",
-            "-y",
-            "-n",
-            env_name,
-            &collections
-                .conda_install_pkgs
-                .iter()
-                .map(|p| p.to_string())
-                .collect::<Vec<_>>()
-                .join(" "),
-        ])?;
+        let mut args = vec!["install", "--no-deps", "-y", "-n", env_name];
+        let channels = channels
+            .iter()
+            .map(|c| ["-c", c])
+            .collect::<Vec<_>>()
+            .concat();
+        args.extend(channels);
+        let pkgs = collections
+            .conda_install_pkgs
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>();
+        let pkgs = pkgs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+        args.extend(pkgs);
+        let mut child = spawn_conda(args)?;
         let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
         let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
         let pattern = regex::Regex::new("==> LINKING PACKAGE: (.*) <==")?;
@@ -352,25 +349,22 @@ async fn t() -> anyhow::Result<()> {
         "demo",
         r#"
 # Name                    Version                   Build  Channel
-bzip2                     1.0.8                h620ffc9_4
-ca-certificates           2022.07.19           hca03da5_0
-certifi                   2022.6.15       py310hca03da5_0
-libcxx                    12.0.0               hf6beb65_1
-libffi                    3.4.2                hc377ac9_4
-ncurses                   6.3                  h1a28f6b_3
-openssl                   1.1.1q               h1a28f6b_0
-pip                       22.1.2          py310hca03da5_0
-python                    3.10.4               hbdb9e5c_0
-readline                  8.1.2                h1a28f6b_1
-setuptools                61.2.0          py310hca03da5_0
-sqlite                    3.38.5               h1058600_0
-tk                        8.6.12               hb8d0fd4_0
-tzdata                    2022a                hda174b7_0
+ca-certificates           2022.07.19           hecd8cb5_0
+certifi                   2022.6.15        py37hecd8cb5_0
+libcxx                    12.0.0               h2f01273_0
+libffi                    3.3                  hb1e8313_2
+ncurses                   6.3                  hca72f7f_3
+openssl                   1.1.1q               hca72f7f_0
+pip                       22.1.2           py37hecd8cb5_0
+python                    3.7.13               hdfd78df_0
+readline                  8.1.2                hca72f7f_1
+setuptools                61.2.0           py37hecd8cb5_0
+sqlite                    3.38.5               h707629a_0
+tk                        8.6.12               h5d9f67b_0
 wheel                     0.37.1             pyhd3eb1b0_0
-xz                        5.2.5                h1a28f6b_1
-#werkzeug                  2.2.1                    pypi_0    pypi
-zlib                      1.2.12               h5a0b063_2
-django                    4.0.6                    pypi_0    pypi
+xz                        5.2.5                hca72f7f_1
+zlib                      1.2.12               h4dc903c_2
+django                    3.2.14                   pypi_0    pypi
 "#,
         false,
         true,
