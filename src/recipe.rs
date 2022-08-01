@@ -89,7 +89,7 @@ impl TryFrom<&str> for Recipe {
             let package = match splitted[..] {
                 [name, version, build] => {
                     // conda package
-                    let channel = "default".to_string();
+                    let channel = "defaults".to_string();
                     channels.insert(channel.clone());
                     Package {
                         name: name.to_string(),
@@ -145,7 +145,7 @@ certifi                   2022.6.15        py37hecd8cb5_0    conda-forge
     assert_eq!(
         recipe,
         Recipe {
-            channels: HashSet::from(["conda-forge".into(), "default".into()]),
+            channels: HashSet::from(["conda-forge".into(), "defaults".into()]),
             packages: [
                 (
                     "aiohttp",
@@ -162,7 +162,7 @@ certifi                   2022.6.15        py37hecd8cb5_0    conda-forge
                         version: "1.0".into(),
                         kind: Conda {
                             build: "mkl".into(),
-                            channel: "default".into()
+                            channel: "defaults".into()
                         }
                     }
                 ),
@@ -323,7 +323,7 @@ yarl                      1.7.3                xaa72f7f_3    conda-forge
                 version: "12.0.0".into(),
                 kind: Conda {
                     build: "h2f01273_0".into(),
-                    channel: "default".into(),
+                    channel: "defaults".into(),
                 },
             },
         ],
@@ -334,7 +334,7 @@ yarl                      1.7.3                xaa72f7f_3    conda-forge
                     version: "1.18.1".into(),
                     kind: Conda {
                         build: "py37h7241aed_0".into(),
-                        channel: "default".into(),
+                        channel: "defaults".into(),
                     },
                 },
                 to: Package {
@@ -349,7 +349,7 @@ yarl                      1.7.3                xaa72f7f_3    conda-forge
                     version: "1.0".into(),
                     kind: Conda {
                         build: "mkl".into(),
-                        channel: "default".into(),
+                        channel: "defaults".into(),
                     },
                 },
                 to: Package {
@@ -357,7 +357,7 @@ yarl                      1.7.3                xaa72f7f_3    conda-forge
                     version: "1.2".into(),
                     kind: Conda {
                         build: "mkl".into(),
-                        channel: "default".into(),
+                        channel: "defaults".into(),
                     },
                 },
             },
