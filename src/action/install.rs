@@ -222,10 +222,12 @@ async fn install(
         }
 
         let mut pkgs = VecDeque::from(collections.pypi_install_pkgs.clone());
+        let max_failed = 50;
+        let mut current_failed = 0;
         while !pkgs.is_empty() {
             let pkg = pkgs.pop_front().unwrap();
             let _ = event_tx.send(InstallEvent::Package(pkg.clone())).await;
-            run_conda([
+            match run_conda([
                 "run",
                 "-n",
                 env_name,
@@ -234,8 +236,28 @@ async fn install(
                 "--no-deps",
                 pkg.to_string().as_str(),
             ])
-            .await?;
-            let _ = event_tx.send(InstallEvent::Increase).await;
+            .await
+            {
+                Ok(_) => {
+                    let _ = event_tx.send(InstallEvent::Increase).await;
+                }
+                Err(err) => {
+                    if err.to_string().contains("not find a version") {
+                        return Err(err);
+                    } else {
+                        current_failed += 1;
+                        if current_failed == max_failed {
+                            return Err(err);
+                        }
+                        // push current pkg back to pkgs
+                        pkgs.push_back(pkg);
+                        let _ = event_tx.send(InstallEvent::Message(format!(
+                            "fail to install {:#}, will try to install it later\n{}",
+                            pkg, err
+                        )));
+                    }
+                }
+            }
         }
     }
 
