@@ -9,6 +9,8 @@ use tokio::{
     process::{Child, Command},
 };
 
+use crate::recipe::Recipe;
+
 /// this function will not block and return Child
 fn spawn_conda<I, S>(args: I) -> std::io::Result<Child>
 where
@@ -39,4 +41,18 @@ where
         let _ = stderr.read_to_string(&mut msg).await;
         Err(anyhow::anyhow!(msg))
     }
+}
+
+pub async fn try_get_env_recipe(env_name: &str) -> anyhow::Result<Option<Recipe>> {
+    Ok(match run_conda(["list", "-n", env_name]).await {
+        Ok(contents) => Some(Recipe::try_from(contents.as_str()).map_err(|e| anyhow::anyhow!(e))?),
+        Err(error) => {
+            if error.to_string().contains("EnvironmentLocationNotFound") {
+                None
+            } else {
+                // get env recipe failed
+                return Err(error);
+            }
+        }
+    })
 }

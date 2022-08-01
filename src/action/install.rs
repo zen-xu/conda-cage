@@ -7,7 +7,7 @@ use tokio::{
     sync::mpsc,
 };
 
-use super::{run_conda, spawn_conda};
+use super::{run_conda, spawn_conda, try_get_env_recipe};
 use crate::recipe::{Package, Recipe, RecipeDiff};
 
 pub async fn install(
@@ -16,21 +16,7 @@ pub async fn install(
     force_reinstall: bool,
     show_diff: bool,
 ) -> anyhow::Result<()> {
-    let old_recipe = {
-        match run_conda(["list", "-n", env_name]).await {
-            Ok(contents) => {
-                Some(Recipe::try_from(contents.as_str()).map_err(|e| anyhow::anyhow!(e))?)
-            }
-            Err(error) => {
-                if error.to_string().contains("EnvironmentLocationNotFound") {
-                    None
-                } else {
-                    // get env recipe failed
-                    return Err(error);
-                }
-            }
-        }
-    };
+    let old_recipe = try_get_env_recipe(env_name).await?;
     let (old_recipe, need_create_env) = if old_recipe.is_none() || force_reinstall {
         ("".try_into().unwrap(), true)
     } else {
