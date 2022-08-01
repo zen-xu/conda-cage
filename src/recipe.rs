@@ -1,10 +1,13 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+};
 
 use console::style;
 
 #[derive(Debug, PartialEq)]
 pub struct Recipe {
-    pub channels: Vec<String>,
+    pub channels: HashSet<String>,
     pub packages: HashMap<String, Package>,
 }
 
@@ -75,7 +78,7 @@ impl TryFrom<&str> for Recipe {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let mut packages = HashMap::new();
-        let mut channels = vec![];
+        let mut channels = HashSet::new();
         for line in value.lines() {
             let line = line.trim();
             if line.starts_with("#") || line.is_empty() {
@@ -86,12 +89,14 @@ impl TryFrom<&str> for Recipe {
             let package = match splitted[..] {
                 [name, version, build] => {
                     // conda package
+                    let channel = "default".to_string();
+                    channels.insert(channel.clone());
                     Package {
                         name: name.to_string(),
                         version: version.to_string(),
                         kind: PackageKind::Conda {
                             build: build.to_string(),
-                            channel: "default".to_string(),
+                            channel,
                         },
                     }
                 }
@@ -105,7 +110,7 @@ impl TryFrom<&str> for Recipe {
                 }
                 [name, version, build, channel] => {
                     // conda other channel package
-                    channels.push(channel.to_string());
+                    channels.insert(channel.to_string());
                     Package {
                         name: name.to_string(),
                         version: version.to_string(),
@@ -140,7 +145,7 @@ certifi                   2022.6.15        py37hecd8cb5_0    conda-forge
     assert_eq!(
         recipe,
         Recipe {
-            channels: vec!["conda-forge".into()],
+            channels: HashSet::from(["conda-forge".into(), "default".into()]),
             packages: [
                 (
                     "aiohttp",
