@@ -27,7 +27,7 @@ enum Commands {
             long,
             value_hint = ValueHint::FilePath,
             value_parser = validate_path,
-            help = "Install the env from the given file"
+            help = "Install the env by the local given file"
         )]
         file: Option<PathBuf>,
 
@@ -41,11 +41,11 @@ enum Commands {
         #[clap(
             long,
             action,
-            help = "Show the difference between local env and given env"
+            help = "Show the difference between local env and target env"
         )]
         show_diff: bool,
 
-        #[clap(long, value_parser, help = "Rename the install env name")]
+        #[clap(long, value_parser, help = "Rename the installing env name")]
         rename: Option<String>,
     },
 }
@@ -63,7 +63,22 @@ async fn main() -> anyhow::Result<()> {
             show_diff,
             rename,
         } => {
-            let new_recipe = std::fs::read_to_string(file.unwrap())?;
+            let new_recipe = if let Some(file) = file {
+                std::fs::read_to_string(file)?
+            } else {
+                let version = version
+                    .or(Some("master".to_string()))
+                    .map(|v| {
+                        if v == "latest" {
+                            "master".to_string()
+                        } else {
+                            v
+                        }
+                    })
+                    .unwrap();
+                fetch_recipe(&env_name, &version).await?
+            };
+            let env_name = rename.unwrap_or(env_name);
             action::install(&env_name, &new_recipe, force, show_diff).await?;
         }
     }
@@ -78,4 +93,21 @@ fn validate_path(path: &str) -> std::result::Result<PathBuf, String> {
     }
 
     Ok(path)
+}
+
+async fn fetch_recipe(env_name: &str, version: &str) -> anyhow::Result<String> {
+    let rsp = reqwest::get(format!(
+        "http://hftgitlab/conda-envs/{}/raw/{}/env.recipe?inline=false",
+        env_name, version
+    ))
+    .await?;
+    if !rsp.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "fail to fetch env: {}, version: {}, err code: {}",
+            env_name,
+            version,
+            rsp.status()
+        ));
+    }
+    Ok(rsp.text().await?)
 }
